@@ -29,8 +29,8 @@ ollama pull qwen3-vl:4b-instruct
 SHA256 校验 / checksums:
 
 ```
-c6ece7ae9c72347ce154b731b856c0dfde79bed85501e1ae744cf7b47292b834  SeeName_v1.0_slim_no_model.7z
-dac05af7672b412b556c55ba52189f633f8817f0d0cef9e4c  SeeName_v1.0_full_with_model.7z
+7740f26b7e9d13a626e416b616bb9dd65fabd83a64ef8a9efa0c29df5d27fdf5  SeeName_v1.0_slim_no_model.7z
+0265d0f640681e378bc855306c6ff3d0041f30db65aac0e2450f90b9b7539f83  SeeName_v1.0_full_with_model.7z
 ```
 
 ## 开源协议 License
