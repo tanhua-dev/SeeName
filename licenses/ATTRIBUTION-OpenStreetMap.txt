@@ -1,0 +1,23 @@
+地图数据 © OpenStreetMap 贡献者（https://www.openstreetmap.org/copyright），遵循 ODbL 许可证
+
+Map data © OpenStreetMap contributors (https://www.openstreetmap.org/copyright),
+licensed under the Open Database License (ODbL 1.0).
+https://opendatacommons.org/licenses/odbl/1-0/
+
+用于本软件的：data\districts.csv（中国县级点位，约 3300 条）的坐标部分
+
+- 坐标来源：OpenStreetMap 县级行政区
+  （`boundary=administrative` + `admin_level=6`）的边界中心点，
+  经 Overpass API 按省抓取；OSM 未覆盖的县与港澳台由 GeoNames 补充
+  （署名见 `ATTRIBUTION-GeoNames.txt`）
+- 名录来源：`modood/Administrative-divisions-of-China`（WTFPL 许可），
+  系对国家统计局 2023 年行政区划代码的整理
+- 分发条款：本数据文件以 **ODbL 1.0** 分发。允许复制、分发、商用；
+  要求 ① 署名；② 衍生数据库仍以 ODbL 授权
+- 本数据文件与软件代码的 MIT 许可相互独立，二者不构成衍生关系
+  （可执行文件不因读取数据文件而受 ODbL 约束）
+
+署名要求（ODbL 1.0）：须显著标明「© OpenStreetMap 贡献者」并提供
+openstreetmap.org/copyright 链接——以上信息已在本文件中列明。
+
+完整第三方声明见随附的 NOTICE.md 第五节。
