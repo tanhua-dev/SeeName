@@ -69,7 +69,7 @@ def main():
         root.mainloop()
     finally:
         # —— 退出收尾（顺序很重要）——
-        # 1) 收掉自带服务进程树，释放显存
+        # 1) 请求中止本地推理，待原生调用安全返回后释放模型
         engine.shutdown_server()
         # 2) 给后台线程（识别 worker、自动启动等）一点时间自然收尾
         _t0 = time.time()

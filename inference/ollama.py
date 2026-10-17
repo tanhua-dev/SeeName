@@ -293,6 +293,11 @@ class OllamaBackend:
             LoadedModel(model['name'], model['size'], model['vram'])
             for model in info['models']))
 
+    def diagnostics(self) -> dict:
+        info = self._runtime.runtime_status()
+        return dict(backend='Ollama', device='', models_dir=info['models_dir'],
+                    initialized=info['running'], found=info['found'], busy='', error='')
+
     def close(self) -> None:
         self._runtime.shutdown_server()
 
@@ -417,6 +422,9 @@ class OllamaModelStore:
             if ':' not in want and kk == want + ':latest':
                 return True
         return False
+
+    def problems(self) -> dict[str, str]:
+        return {}
 
     def download(self, name: str, on_progress=None, should_stop=None) -> str:
         """流式下载模型。

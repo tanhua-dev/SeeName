@@ -40,6 +40,7 @@ class App:
         self.worker: threading.Thread | None = None
         self.stop_evt = threading.Event()
         self.running = False
+        self._model_busy = False
         self.state = 'idle'         # idle / running / stopping / stopped / done
         self.total = 0
         self.done = 0
@@ -131,23 +132,14 @@ class App:
 
     # ------------------------------------------------------------ 启动自带运行时
     def _autostart(self):
-        """窗口一开就把自带推理运行时拉起来（用户不需要装 Ollama）。"""
+        """后台初始化本地库，不在启动时占用模型内存。"""
         threading.Thread(target=self._autostart_bg, daemon=True).start()
 
     def _autostart_bg(self):
         try:
-            rs = engine.runtime_status()
-            self.q.put(('log', T('推理运行时：%s（%s）')
-                        % (rs['exe'] or T('未找到'), rs['label']), 'dim'))
-            self.q.put(('log', T('模型库：%s') % rs['models_dir'], 'dim'))
-            if rs['running']:
-                self.q.put(('log', T('推理服务已在线'), 'ok'))
-            elif not rs['found']:
-                self.q.put(('log', T('未找到自带运行时，请确认软件目录里的 runtime 文件夹完整'), 'err'))
-            else:
-                ok = engine.start_server(on_log=lambda s: self.q.put(('log', s, 'dim')))
-                self.q.put(('log', T('推理服务已就绪') if ok else T('推理服务启动失败'),
-                            'ok' if ok else 'err'))
+            ok = engine.start_server(on_log=lambda s: self.q.put(('log', s, 'err')))
+            self.q.put(('log', T('本地推理库已就绪 · CPU') if ok else T('本地推理库不可用'),
+                        'ok' if ok else 'err'))
         except Exception:
             self.q.put(('log', traceback.format_exc(), 'err'))
         self.q.put(('srv', None, None))
@@ -571,12 +563,13 @@ class App:
         self.cb_all.pack(fill='x', anchor='w', pady=(0, 7))
 
         # ④ 模型（下拉 + 模型管理）
-        self.var_model = tk.StringVar(value=engine.MODEL)
+        self.var_model = tk.StringVar(value=engine.selected_model())
         self.cb_model = ttk.Combobox(self._set_row(body, T('模型')),
                                      textvariable=self.var_model,
                                      width=theme.button_width(20, 21), state='readonly',
-                                     values=[engine.MODEL])
+                                     values=[item['name'] for item in engine.MODEL_CATALOG])
         self.cb_model.pack(side='right')
+        self.cb_model.bind('<<ComboboxSelected>>', lambda e: self.choose_model(self.var_model.get()))
         self.btn_model = ttk.Button(body, text=T('模型管理…'),
                                     command=self.open_model_dialog)
         self.btn_model.pack(fill='x', pady=(0, 7))
@@ -713,12 +706,12 @@ class App:
         bar = tk.Frame(self.root, bg=theme.C_BAR)
         bar.pack(side='bottom', fill='x')
 
-        # ● 模型状态：点它 = 启动模型服务（原来头顶那颗「启动模型服务」按钮）
+        # ● 模型状态：点击可提前加载选中的本地模型。
         self.dot_srv = tk.Label(bar, text=T('● 模型未启动'), bg=theme.C_BAR, fg=theme.C_HINT,
                                 font=(theme.FONT, 9), cursor='hand2')
         self.dot_srv.pack(side='left', padx=(14, 0), pady=5)
         self.dot_srv.bind('<Button-1>', lambda e: self.on_start_srv())
-        self._srv_hint = T('点这里启动模型服务')
+        self._srv_hint = T('点这里加载所选模型')
         Hover(self.dot_srv, lambda: self._srv_hint)
 
         ttk.Separator(bar, orient='vertical',
@@ -737,9 +730,9 @@ class App:
         self.lbl_models.pack(side='left', pady=5)
         self._models_full = ''
         Hover(self.lbl_models, lambda: self._models_full)
-        # 先按本地配置摆上端口和模型库路径（服务探测是后台线程，晚几秒才回来）
+        # 设备和目录无需等待后台初始化。
         try:
-            self.lbl_port.configure(text=T('端口 %d') % engine.server_port())
+            self.lbl_port.configure(text='llama.cpp · CPU')
             md = engine.models_dir()
             self.lbl_models.configure(text=T('模型库 %s') % cut(md, 34))
             self._models_full = md
@@ -1042,26 +1035,43 @@ class App:
             messagebox.showinfo(APP_TITLE, T('这个目录还没有改名记录。\n' + '台账在「核对并改名」里点过「应用改名」之后才会生成。'))
 
     def on_start_srv(self):
-        """启动模型服务。入口在底部状态栏那个 ●圆点（点它就是本方法）。"""
-        try:
-            self.dot_srv.configure(text=T('● 模型启动中…'), fg=theme.C_ACCENT,
-                                   cursor='arrow')
-        except Exception:
-            pass
-        self.log(T('正在启动 Ollama 模型服务…'), 'head')
-        threading.Thread(target=self._start_srv_bg, daemon=True).start()
+        """底部状态圆点：在后台加载所选模型。"""
+        name = self.var_model.get().strip() or engine.MODEL
+        if not engine.model_exists(name):
+            self.open_model_dialog()
+            return
 
-    def _start_srv_bg(self):
-        ok = engine.start_server(on_log=lambda s: self.q.put(('log', s, None)))
-        if ok:
-            self.q.put(('log', T('模型服务已就绪，正在预热 %s…') % self.var_model.get(), 'ok'))
-            wok, _err = engine.warmup(self.var_model.get().strip() or engine.MODEL)
-            self.q.put(('log', T('模型已加载进显存') if wok
-                        else T('模型预热失败（不影响使用，识别时会自动重试）'),
-                        'ok' if wok else 'dim'))
-        else:
-            self.q.put(('log', T('模型服务启动失败'), 'err'))
-        self.q.put(('srv', None, None))
+        def load():
+            if not engine.start_server():
+                raise RuntimeError(engine.runtime_status()['error'])
+            ok, error = engine.warmup(name)
+            if not ok:
+                raise RuntimeError(error)
+
+        self.run_model_action(load, T('模型已加载 · %s') % name)
+
+    def run_model_action(self, action, message):
+        if self.running or self._model_busy:
+            return False
+        self._model_busy = True
+        self.cb_model.configure(state='disabled')
+        self.dot_srv.configure(text=T('● 模型操作中…'), fg=theme.C_ACCENT)
+
+        def work():
+            try:
+                action()
+                self.q.put(('model_done', (True, message), None))
+            except Exception as error:
+                self.q.put(('model_done', (False, str(error)), None))
+
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def choose_model(self, name):
+        if self.running or self._model_busy:
+            return False
+        self.var_model.set(name)
+        return self.run_model_action(lambda: engine.select_model(name), T('已选用模型：%s') % name)
 
     def open_about(self):
         for w in self.root.winfo_children():
@@ -1120,7 +1130,7 @@ class App:
         self._reload_tree(d)
         messagebox.showinfo(APP_TITLE, T('已还原 %d 个文件') % n)
     def on_go(self):
-        if self.running:
+        if self.running or self._model_busy:
             return
         d = os.path.abspath(self.var_dir.get().strip())
         if not os.path.isdir(d):
@@ -1146,7 +1156,7 @@ class App:
         if need_model and not engine.model_exists(model):
             if messagebox.askyesno(
                     APP_TITLE,
-                    T('视觉模型「%s」还没有下载到本机。\n\n' + '现在打开「模型管理」下载它吗？\n（模型文件约 3–8 GB，只下载一次）') % model):
+                    T('模型「%s」缺少配套文件。\n\n现在打开「模型管理」选择本地 GGUF 目录吗？') % model):
                 self.open_model_dialog()
             return
 
@@ -1223,7 +1233,7 @@ class App:
 
     def _server_bg(self):
         info = engine.server_info()
-        models = engine.list_models() if info.get('up') else []
+        models = engine.list_models()
         self.q.put(('server', (info, models, engine.runtime_status()), None))
 
     def _poll(self):
@@ -1248,6 +1258,15 @@ class App:
                 self.update_server(*payload)
             elif kind == 'srv':
                 pass
+            elif kind == 'model_done':
+                self._model_busy = False
+                self.cb_model.configure(state='readonly')
+                ok, message = payload
+                self.log(message, 'ok' if ok else 'err')
+                self.update_server(engine.server_info(), engine.list_models(), engine.runtime_status())
+                for window in self.root.winfo_children():
+                    if isinstance(window, ModelDialog):
+                        window.refresh()
             elif kind == 'end':
                 self.finish()
 
@@ -1260,48 +1279,32 @@ class App:
 
     # ------------------------------------------------------------ 界面更新
     def update_server(self, info, models, rt=None):
-        """刷新底部状态栏：●模型状态 ｜ 端口 ｜ 模型库（完整路径靠悬停看）。"""
+        """Show readiness and loaded models without claiming file size is RAM/VRAM."""
         self._models = models or []
-        if rt:
-            self.lbl_port.configure(text=T('端口 %d') % rt['port'])
-            self._port_hint = T('%s\n%s') % (rt['label'], rt['url'])
-            self.lbl_models.configure(text=T('模型库 %s') % cut(rt['models_dir'], 34))
-            self._models_full = rt['models_dir']
-        if models:
-            cur = self.cb_model.get()
-            vals = list(models)
-            if engine.MODEL not in vals:
-                vals.insert(0, engine.MODEL)
-            self.cb_model.configure(values=vals)
-            if cur not in vals:
-                self.cb_model.set(engine.MODEL if engine.MODEL in vals else vals[0])
+        rt = rt or engine.runtime_status()
+        self.lbl_port.configure(text='%s · %s' % (rt['backend'], rt['device']))
+        self._port_hint = rt.get('error') or T('本地推理，不需要端口或服务进程')
+        self.lbl_models.configure(text=T('模型库 %s') % cut(rt['models_dir'], 34))
+        self._models_full = rt['models_dir']
+        values = list(dict.fromkeys(models + [item['name'] for item in engine.MODEL_CATALOG]))
+        self.cb_model.configure(values=values)
         dot = self.dot_srv
-        if not info.get('up'):
-            # 灰点 + 点它就能拉起服务（原来头顶那颗「启动模型服务」按钮）
-            dot.configure(text=T('● 模型未启动'), fg=theme.C_HINT, cursor='hand2')
-            self._srv_hint = T('点这里启动模型服务')
-            return
-        cur = self.var_model.get().strip()
-        # 服务在跑 = 绿点；但模型还没准备好时橙点提示，细节写在悬停里
-        if not self._models:
-            self._srv_hint = T('服务在线 · 还没下载任何模型（可在「⋯更多 → 模型管理…」下载）')
-            dot.configure(text=T('● 模型运行中 · 待下载'), fg=theme.C_WARN, cursor='arrow')
-            return
-        if cur and not engine.model_exists(cur, {m: 0 for m in self._models}):
-            self._srv_hint = T('%s 未下载 · 在「⋯更多 → 模型管理…」下载') % cur
-            dot.configure(text=T('● 模型运行中 · 待下载'), fg=theme.C_WARN, cursor='arrow')
-            return
-        ms = info.get('models') or []
-        if ms:
-            m = ms[0]
-            gb = m['vram'] / 1073741824.0
-            tot = m['size'] / 1073741824.0
-            allin = T('（全部在显存）') if m['size'] and abs(m['size'] - m['vram']) < 1e7 else \
-                    T('（%.1fG/%.1fG 部分在内存）') % (gb, tot)
-            self._srv_hint = T('已就绪 · %s · %.1fG %s') % (m['name'], tot, allin)
+        self._srv_hint = rt.get('error') or T('点这里加载所选模型')
+        if self._model_busy or rt.get('busy'):
+            dot.configure(text=T('● 模型操作中…'), fg=theme.C_ACCENT, cursor='arrow')
+        elif rt.get('error'):
+            dot.configure(text=T('● 模型操作失败'), fg=theme.C_WARN, cursor='hand2')
+        elif not info.get('up'):
+            dot.configure(text=T('● 模型未初始化'), fg=theme.C_HINT, cursor='hand2')
+        elif not engine.model_exists(self.var_model.get(), {name: 0 for name in models}):
+            self._srv_hint = T('请选择配套的 GGUF 主模型与 mmproj 文件')
+            dot.configure(text=T('● 模型文件不完整'), fg=theme.C_WARN, cursor='hand2')
+        elif any(m['name'] == self.var_model.get() for m in info.get('models', [])):
+            self._srv_hint = T('模型已加载 · %s') % self.var_model.get()
+            dot.configure(text=T('● 模型已加载'), fg=theme.C_OK, cursor='hand2')
         else:
-            self._srv_hint = T('服务在线 · 模型待命（点「开始识别」时自动加载，无需手动）')
-        dot.configure(text=T('● 模型运行中'), fg=theme.C_OK, cursor='arrow')
+            self._srv_hint = T('识别时自动加载，也可点击提前加载')
+            dot.configure(text=T('● 模型待加载'), fg=theme.C_HINT, cursor='hand2')
 
     def update_prog(self, i, total, stats):
         self.total, self.done = total, i
@@ -1604,13 +1607,13 @@ class App:
         self.log(T('自检：关于窗口构建正常（隐私文案随联网开关变化）'), 'ok')
         ad.destroy()
         # —— v3.16 布局：底部状态栏 / 侧栏折叠 / 日志抽屉 / ⋯更多 菜单 ——
-        st = '● 模型未启动'
+        st = T('● 模型未初始化')
         self.dot_srv.configure(text=st, fg=theme.C_HINT)
-        self.dot_srv.configure(text=T('● 模型运行中'), fg=theme.C_OK)
+        self.dot_srv.configure(text=T('● 模型已加载'), fg=theme.C_OK)
         self.update_server({'up': True, 'models': []}, [], engine.runtime_status())
         self.update_server({'up': False, 'models': []}, [], engine.runtime_status())
         self.root.update_idletasks()
-        self.log(T('自检：底部状态栏（●模型状态 / 端口 / 模型库）切换正常'), 'ok')
+        self.log(T('自检：本地模型状态与设备显示正常'), 'ok')
         _n = self.menu_more.index('end') + 1
         self.log(T('自检：⋯更多菜单构建正常（%d 项：核对改名/回滚/打开…/模型管理/日志）')
                  % _n, 'ok' if _n >= 8 else 'warn')
@@ -1642,8 +1645,11 @@ class App:
                  % _seen, 'ok' if _seen == _want else 'err')
         self.log(T('自检：手工时间解析 %r -> %s')
                  % ('20251011_1430', engine.parse_manual_time('20251011_1430')), 'dim')
-        self.log('ffmpeg = %s' % engine.FF(), 'dim')
+        try:
+            self.log('ffmpeg = %s' % engine.FF(), 'dim')
+        except RuntimeError as error:
+            self.log(str(error), 'warn')
         rs = engine.runtime_status()
-        self.log(T('推理运行时 = %s（%s）') % (rs['exe'] or T('未找到'), rs['label']), 'dim')
+        self.log(T('=== 推理后端：%s · %s') % (rs['backend'], rs['device']), 'dim')
         self.log(T('模型库 = %s') % engine.models_dir(), 'dim')
         self.log(T('预设目录：%s') % engine.PRESETS, 'dim')

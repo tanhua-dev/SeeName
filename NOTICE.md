@@ -4,6 +4,21 @@
 本产品自身代码（`main.py` / `engine.py` / `strings.py`）采用 **MIT License**，见 `LICENSE`（全文亦随包附于 `licenses/LICENSE-MIT.txt`）。
 本产品随附或依赖的第三方组件如下，各自的许可条款优先适用于对应组件。
 
+## 当前 GGUF 开发分支 / Current GGUF development branch
+
+当前代码直接使用 llama-cpp-python / llama.cpp，不启动 Ollama。绑定固定为
+JamePeng/llama-cpp-python 的 `ce261d12b5810fb4c6e695efc85d5e8cf23f0630`，
+安装分发中的 MIT 许可证见 `licenses/LICENSE-llama-cpp-python.txt`。
+模型使用本地 Qwen3-VL-4B-Instruct GGUF 主模型及 mmproj 视觉投影文件。
+完整新安装包尚未构建，原生依赖的分发清单需在打包阶段核对。
+以下 Ollama 运行时与发布包大小、构建信息描述的是既有旧版发行包。
+
+The current development branch uses llama-cpp-python / llama.cpp in-process.
+The binding revision is pinned in `requirements-inference.txt`; its distributed
+MIT license is included in `licenses/LICENSE-llama-cpp-python.txt`. Full-package
+native dependency inventory is pending. Ollama release details below describe
+the legacy distribution.
+
 ---
 
 ## 一、模型权重（随产品分发的 `models\` 目录）

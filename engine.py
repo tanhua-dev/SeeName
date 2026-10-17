@@ -10,7 +10,8 @@ from __future__ import annotations
 import atexit
 from strings import T
 from inference import InferenceBackend, ModelStore
-from inference.ollama import OllamaBackend, OllamaModelStore, OllamaRuntime
+from inference.llama_backend import LlamaBackend
+from inference.local_models import LocalModelStore
 from core import workflow as _workflow
 from core.defaults import (
     MODEL,
@@ -135,104 +136,42 @@ from core.workflow import (
 )
 
 
-# Runtime ownership remains here so shutdown and backend replacement use the
-# same instances as the GUI and batch entry points.
-_model_runtime = OllamaRuntime(
+# Importing the engine does not import the native binding or load model weights.
+model_store: ModelStore = LocalModelStore(
     app_dir=APP_DIR, user_data=USER_DATA, config=lambda: config(),
-    save_config=lambda **kw: save_config(**kw), default_port=DEFAULT_PORT,
-    keep_alive=KEEP_ALIVE)
-
-
-model_backend: InferenceBackend = OllamaBackend(
-    _model_runtime, warmup_prompt=PROMPT, context_size=CTX)
-
-
-_ollama_model_store = OllamaModelStore(_model_runtime)
-
-
-model_store: ModelStore = _ollama_model_store
-
-
-def find_runtime():
-    """定位推理运行时，返回 (exe, source)，source = 'bundled' | 'system'。"""
-    return _model_runtime.find_runtime()
-
-
-def find_ollama() -> str:
-    """兼容旧调用：只返回路径。"""
-    return find_runtime()[0]
+    save_config=lambda **kw: save_config(**kw))
+model_backend: InferenceBackend = LlamaBackend(model_store, context_size=CTX)
 
 
 def models_dir(create=True) -> str:
-    """模型库目录。默认就是软件自己的 models 文件夹（模型包下载到这里）。"""
+    """本地 GGUF 模型库目录，不复用旧 Ollama blob 目录配置。"""
     return model_store.directory(create=create)
 
 
-def server_port() -> int:
-    return _model_runtime.server_port()
-
-
-def server_url() -> str:
-    return _model_runtime.server_url()
-
-
-def port_open(t=1.2, port=None) -> bool:
-    return _model_runtime.port_open(t=t, port=port)
-
-
-def is_ollama(port, t=1.5) -> bool:
-    """该端口上跑的确实是 Ollama 服务吗？"""
-    return _model_runtime.is_ollama(port, t=t)
-
-
-def server_log_path() -> str:
-    return _model_runtime.server_log_path()
-
-
 def runtime_status() -> dict:
-    """运行时信息，供界面展示。"""
-    return _model_runtime.runtime_status()
+    """本地推理状态；轮询不会等待模型操作。"""
+    return model_backend.diagnostics()
 
 
 def start_server(on_log=None, timeout=120) -> bool:
-    """确保有可用的推理服务；没有就用「自带运行时」拉起来。"""
+    """兼容入口：初始化进程内推理库，不启动服务或子进程。"""
     return model_backend.start(on_log=on_log, timeout=timeout)
 
 
 def shutdown_server():
-    """退出/切换模型库时收掉自己拉起来的服务，释放显存。"""
+    """兼容入口：中止正在进行的推理并释放本进程拥有的模型。"""
     model_backend.close()
 
 atexit.register(shutdown_server)
 
 
 def set_models_dir(path, on_log=None) -> bool:
-    """切换模型库目录（重启自带服务使其生效）。"""
+    """切换 GGUF 模型库目录并释放旧模型，不移动权重文件。"""
     return model_store.set_directory(path, on_log=on_log)
 
 
-def system_ollama_models() -> str:
-    """探测本机已安装的 Ollama 模型库，用于一键复用（免去重新下载模型包）。"""
-    return _ollama_model_store.system_ollama_models()
-
-
-def local_models_in(path: str) -> int:
-    """粗略统计某个模型库里有多少个模型（按 manifests 下的文件计）。"""
-    return _ollama_model_store.local_models_in(path)
-
-
-def registry() -> str:
-    """当前模型下载源；空字符串表示 Ollama 官方源。"""
-    return model_store.source()
-
-
-def set_registry(url: str) -> str:
-    """设置模型下载源（传空字符串即恢复 Ollama 官方源）。"""
-    return model_store.set_source(url)
-
-
 def server_info() -> dict:
-    """查询服务与显存占用（/api/ps）。"""
+    """兼容入口：已初始化状态及加载模型的文件大小。"""
     status = model_backend.status()
     return {'up': status.available, 'models': [
         {'name': model.name, 'size': model.size_bytes, 'vram': model.device_bytes}
@@ -243,7 +182,7 @@ MODEL_CATALOG = model_store.catalog
 
 
 def installed_models(retry: int = 2) -> dict:
-    """返回 {模型名: 字节数}；服务不可用或查询失败时返回空字典。"""
+    """返回配套模型 {标识: 主模型与视觉投影文件总字节数}。"""
     return model_store.installed(retry=retry)
 
 
@@ -253,13 +192,26 @@ def list_models() -> list:
 
 
 def model_exists(name: str, installed: dict | None = None) -> bool:
-    """判断模型是否已下载（忽略 registry 前缀，兼容省略 :latest 的写法）。"""
+    """判断指定本地模型是否具备配套权重。"""
     return model_store.exists(name, installed=installed)
 
 
-def pull_model(name: str, on_progress=None, should_stop=None) -> str:
-    """流式下载模型。"""
-    return model_store.download(name, on_progress=on_progress, should_stop=should_stop)
+def model_problems() -> dict:
+    return model_store.problems()
+
+
+def selected_model() -> str:
+    """Old Ollama identifiers fall back to the native default, without rewriting config."""
+    name = str(config().get('model') or '')
+    return name if any(item['name'] == name for item in MODEL_CATALOG) else MODEL
+
+
+def select_model(name: str):
+    if not any(item['name'] == name for item in MODEL_CATALOG):
+        raise ValueError(T('不支持的模型：%s') % name)
+    if name != selected_model() or any(m.name != name for m in model_backend.status().models):
+        model_backend.close()
+    save_config(model=name)
 
 
 def ask_model(img: bytes, model=MODEL, timeout=300, prompt=None,
@@ -271,7 +223,7 @@ def ask_model(img: bytes, model=MODEL, timeout=300, prompt=None,
 
 
 def warmup(model=MODEL) -> tuple[bool, str]:
-    """热身：把模型与视觉编码器载进显存，避免第一条承担加载时间。"""
+    """加载主模型；视觉编码器由绑定在首次识图时初始化。"""
     return model_backend.load(model)
 
 
@@ -357,7 +309,7 @@ if __name__ == '__main__':
     ap.add_argument('--photos', action='store_true', help=T('连目录里的照片一起处理'))
     ap.add_argument('--no-video', action='store_true', help=T('只处理照片，不动视频'))
     ap.add_argument('--describe-photos', action='store_true',
-                    help=T('照片也调模型写描述（每张约 11 秒，很慢）'))
+                    help=T('照片也调用模型生成描述（CPU 耗时较长）'))
     ap.add_argument('--apply-plan', action='store_true',
                     help=T('按上次识别出的计划表直接改名（表格里改过的结果也走这个）'))
     a = ap.parse_args()
