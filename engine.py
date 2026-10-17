@@ -21,7 +21,6 @@ _sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(
 from strings import T  # noqa: E402
 
 import atexit
-import base64
 import glob
 import io
 import json
@@ -29,15 +28,16 @@ import math
 import os
 import re
 import shutil
-import socket
 import subprocess
 import sys
 import time
 import traceback
-import urllib.request
 from datetime import datetime, timedelta
 
 from PIL import Image, ImageFilter, ImageOps, ImageStat
+
+from inference import InferenceBackend, ModelStore
+from inference.ollama import OllamaBackend, OllamaModelStore, OllamaRuntime
 
 import geo          # 联网精确定位（可选，默认关闭）
 import meta as metadb   # 描述落盘：EXIF / XMP / 视频标签 / .ai.txt / 目录说明.md
@@ -214,7 +214,6 @@ _LOC = re.compile(r'^\s*location(?:-eng)?\s*:\s*([+\-][0-9.]+[+\-][0-9.]+)', re.
 
 JPG_SOI, JPG_EOI = b'\xff\xd8\xff', b'\xff\xd9'
 CRE = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 # 目录预设（主界面「预设」下拉）。开源版刻意留空：不带任何开发者的私人目录。
 # 需要的话自行添加，键是下拉里显示的名字，值是目录路径，例如：
@@ -252,6 +251,18 @@ def save_config(**kw) -> dict:
     return c
 
 
+# Shared instances are assembled here; adapters never import the application engine.
+# Existing functions below remain compatibility entry points for the current UI.
+_model_runtime = OllamaRuntime(
+    app_dir=APP_DIR, user_data=USER_DATA, config=lambda: config(),
+    save_config=lambda **kw: save_config(**kw), default_port=DEFAULT_PORT,
+    keep_alive=KEEP_ALIVE)
+model_backend: InferenceBackend = OllamaBackend(
+    _model_runtime, warmup_prompt=PROMPT, context_size=CTX)
+_ollama_model_store = OllamaModelStore(_model_runtime)
+model_store: ModelStore = _ollama_model_store
+
+
 # ------------------------------------------------------------------ 外部依赖
 def find_ffmpeg() -> str:
     """按优先级定位 ffmpeg：软件目录（含自带的）→ 系统 PATH。"""
@@ -270,34 +281,8 @@ def find_ffmpeg() -> str:
 
 
 def find_runtime():
-    """定位推理运行时，返回 (exe, source)，source = 'bundled' | 'system'。
-
-    优先用软件自带的 runtime\\ollama —— 用户因此不需要另外安装 Ollama；
-    实在找不到才退回系统安装的 Ollama（Mac 上就是 Ollama.app / brew 装的）。
-    """
-    exe = 'ollama.exe' if IS_WIN else 'ollama'
-    cands = [
-        (os.path.join(RUNTIME_DIR, exe), 'bundled'),
-        (os.path.join(APP_DIR, exe), 'bundled'),
-    ]
-    if IS_WIN:
-        la = os.environ.get('LOCALAPPDATA', '')
-        if la:
-            cands.append((os.path.join(la, 'Programs', 'Ollama', 'ollama.exe'), 'system'))
-    else:
-        cands += [
-            ('/Applications/Ollama.app/Contents/Resources/ollama', 'system'),
-            ('/usr/local/bin/ollama', 'system'),
-            ('/opt/homebrew/bin/ollama', 'system'),
-        ]
-    for c, src in cands:
-        if c and os.path.isfile(c):
-            return c, src
-    w = shutil.which('ollama')
-    if w:
-        return w, 'system'
-    raise RuntimeError(T('未找到推理运行时：软件自带的 runtime 目录缺失，'
-                         '系统里也没装 Ollama。'))
+    """定位推理运行时，返回 (exe, source)，source = 'bundled' | 'system'。"""
+    return _model_runtime.find_runtime()
 
 
 def find_ollama() -> str:
@@ -306,24 +291,8 @@ def find_ollama() -> str:
 
 
 def models_dir(create=True) -> str:
-    """模型库目录。默认就是软件自己的 models 文件夹（模型包下载到这里）。
-
-    Mac 上 .app 内部是只读的，所以顺序反过来：软件旁边有 models 整包
-    （便携分发）就用它；没有才落到 ~/Library/Application Support/SeeName/models。
-    """
-    d = config().get('models_dir')
-    if not d:
-        near = os.path.join(APP_DIR, 'models')
-        if os.path.isdir(near) or not (IS_MAC and getattr(sys, 'frozen', False)):
-            d = near
-        else:
-            d = os.path.join(USER_DATA, 'models')
-    if create:
-        try:
-            os.makedirs(d, exist_ok=True)
-        except Exception:
-            pass
-    return d
+    """模型库目录。默认就是软件自己的 models 文件夹（模型包下载到这里）。"""
+    return model_store.directory(create=create)
 
 
 _FF_CACHE: str | None = None
@@ -365,156 +334,42 @@ def ffmpeg_sync_args() -> list:
 
 
 # ------------------------------------------------------------------ 服务
-_SRV = {'port': 0, 'proc': None, 'source': '', 'exe': ''}
 
 
 def server_port() -> int:
-    return int(_SRV['port'] or config().get('port') or DEFAULT_PORT)
+    return _model_runtime.server_port()
 
 
 def server_url() -> str:
-    return 'http://127.0.0.1:%d' % server_port()
-
-
-def _u(path: str) -> str:
-    return server_url() + path
+    return _model_runtime.server_url()
 
 
 def port_open(t=1.2, port=None) -> bool:
-    s = socket.socket()
-    s.settimeout(t)
-    try:
-        s.connect(('127.0.0.1', int(port or server_port())))
-        return True
-    except Exception:
-        return False
-    finally:
-        s.close()
+    return _model_runtime.port_open(t=t, port=port)
 
 
 def is_ollama(port, t=1.5) -> bool:
     """该端口上跑的确实是 Ollama 服务吗？"""
-    try:
-        req = urllib.request.Request('http://127.0.0.1:%d/' % int(port))
-        with _OPENER.open(req, timeout=t) as r:
-            return b'ollama' in r.read(400).lower()
-    except Exception:
-        return False
+    return _model_runtime.is_ollama(port, t=t)
 
 
 def server_log_path() -> str:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    return os.path.join(DATA_DIR, 'runtime.log')
+    return _model_runtime.server_log_path()
 
 
 def runtime_status() -> dict:
     """运行时信息，供界面展示。"""
-    try:
-        exe, src = find_runtime()
-        found = True
-    except Exception:
-        exe, src, found = '', 'none', False
-    return {
-        'found': found, 'exe': exe, 'source': src,
-        'bundled': src == 'bundled',
-        'label': {'bundled': T('软件自带运行时'), 'system': T('系统安装的 Ollama'),
-                  'none': T('未找到运行时')}.get(src, src),
-        'port': server_port(), 'url': server_url(),
-        'models_dir': models_dir(),
-        'running': port_open(0.4),
-    }
+    return _model_runtime.runtime_status()
 
 
 def start_server(on_log=None, timeout=120) -> bool:
-    """确保有可用的推理服务；没有就用「自带运行时」拉起来。
-
-    自带运行时使用私有端口 + 软件自己的模型库，所以用户不需要另外装 Ollama。
-    """
-    say = on_log or (lambda s: None)
-    if port_open(1.0):                      # 已经在跑，直接复用
-        return True
-    try:
-        exe, src = find_runtime()
-    except Exception as e:
-        say(T('[错误] %s') % e)
-        return False
-    _SRV['exe'], _SRV['source'] = exe, src
-
-    base = int(config().get('port') or DEFAULT_PORT)
-    for p in [base] + [base + i for i in range(1, 6)]:
-        if port_open(0.4, p):               # 端口被别的程序占了，换一个
-            continue
-        env = dict(os.environ)
-        for k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy',
-                  'ALL_PROXY', 'all_proxy'):
-            env.pop(k, None)
-        env['OLLAMA_HOST'] = '127.0.0.1:%d' % p
-        env['OLLAMA_MODELS'] = models_dir()
-        env['OLLAMA_KEEP_ALIVE'] = KEEP_ALIVE
-        env['OLLAMA_ORIGINS'] = '*'
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            lf = open(server_log_path(), 'ab')
-            lf.write((T('\n\n===== 启动 %s（端口 %d，模型库 %s）=====\n')
-                      % (exe, p, models_dir())).encode('utf-8'))
-            lf.flush()
-            proc = subprocess.Popen(
-                [exe, 'serve'], stdout=lf, stderr=subprocess.STDOUT,
-                env=env, creationflags=CRE,
-                # POSIX 上放进独立进程组，退出时才能连 runner 子进程一起杀
-                start_new_session=not IS_WIN)
-            _SRV['proc'] = proc
-            _SRV['port'] = p
-            save_config(port=p)
-        except Exception as e:
-            say(T('[错误] 启动自带运行时失败：%r') % e)
-            continue
-        say(T('推理运行时已启动（%s，端口 %d）') % (src, p))
-        t0 = time.time()
-        while time.time() - t0 < timeout:
-            if port_open(0.6):
-                return True
-            if proc.poll() is not None:
-                say(T('[错误] 运行时进程提前退出（code=%s），详见 %s')
-                    % (proc.returncode, server_log_path()))
-                break
-            time.sleep(0.8)
-    return False
+    """确保有可用的推理服务；没有就用「自带运行时」拉起来。"""
+    return model_backend.start(on_log=on_log, timeout=timeout)
 
 
 def shutdown_server():
-    """退出/切换模型库时收掉自己拉起来的服务，释放显存。
-
-    连 runner 子进程一起杀（terminate 只杀得了直接子进程，加载着模型的
-    runner 会变成孤儿继续占显存）：Windows 用 taskkill /T，POSIX 用进程组
-    信号（start_server 里已经开了独立会话）。
-    """
-    p = _SRV.get('proc')
-    if p is not None and p.poll() is None:
-        killed = False
-        if not IS_WIN:
-            try:
-                os.killpg(os.getpgid(p.pid), 9)
-                killed = True
-            except Exception:
-                killed = False
-        if not killed:
-            try:
-                subprocess.run(['taskkill', '/PID', str(p.pid), '/T', '/F'],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               creationflags=CRE, timeout=10)
-                killed = True
-            except Exception:
-                killed = False
-        if not killed:
-            try:
-                p.terminate()
-            except Exception:
-                pass
-        t0 = time.time()
-        while time.time() - t0 < 8 and port_open(0.3):
-            time.sleep(0.3)
-    _SRV['proc'] = None
+    """退出/切换模型库时收掉自己拉起来的服务，释放显存。"""
+    model_backend.close()
 
 
 atexit.register(shutdown_server)
@@ -522,81 +377,36 @@ atexit.register(shutdown_server)
 
 def set_models_dir(path, on_log=None) -> bool:
     """切换模型库目录（重启自带服务使其生效）。"""
-    say = on_log or (lambda s: None)
-    path = os.path.abspath(path)
-    try:
-        os.makedirs(path, exist_ok=True)
-    except Exception as e:
-        say(T('[错误] 无法使用该目录：%r') % e)
-        return False
-    save_config(models_dir=path)
-    say(T('模型库已切换为 %s，正在重启推理服务…') % path)
-    shutdown_server()
-    _SRV['port'] = 0
-    return start_server(on_log=say)
+    return model_store.set_directory(path, on_log=on_log)
 
 
 def system_ollama_models() -> str:
     """探测本机已安装的 Ollama 模型库，用于一键复用（免去重新下载模型包）。"""
-    cands = []
-    env = os.environ.get('OLLAMA_MODELS')
-    if env:
-        cands.append(env)
-    cands.append(os.path.join(os.path.expanduser('~'), '.ollama', 'models'))
-    la = os.environ.get('LOCALAPPDATA')
-    if la:
-        cands.append(os.path.join(la, 'Ollama', 'models'))
-    for c in cands:
-        try:
-            if c and os.path.isdir(c) and os.listdir(c):
-                return c
-        except Exception:
-            pass
-    return ''
+    return _ollama_model_store.system_ollama_models()
 
 
 def local_models_in(path: str) -> int:
     """粗略统计某个模型库里有多少个模型（按 manifests 下的文件计）。"""
-    n = 0
-    for _root, _dirs, files in os.walk(os.path.join(path, 'manifests')):
-        n += len([f for f in files if not f.startswith('.')])
-    return n
+    return _ollama_model_store.local_models_in(path)
 
 
 def registry() -> str:
     """当前模型下载源；空字符串表示 Ollama 官方源。"""
-    return (config().get('registry') or '').strip()
+    return model_store.source()
 
 
 def set_registry(url: str) -> str:
     """设置模型下载源（传空字符串即恢复 Ollama 官方源）。"""
-    url = (url or '').strip().rstrip('/')
-    for p in ('http://', 'https://'):
-        if url.startswith(p):
-            url = url[len(p):]
-    save_config(registry=url)
-    return url
+    return model_store.set_source(url)
 
 
 # ------------------------------------------------------------------ 基础工具
 def server_info() -> dict:
     """查询服务与显存占用（/api/ps）。"""
-    if not port_open(0.6):
-        return {'up': False, 'models': []}
-    try:
-        req = urllib.request.Request(_u('/api/ps'))
-        with _OPENER.open(req, timeout=4) as r:
-            d = json.loads(r.read().decode('utf-8'))
-        out = []
-        for m in d.get('models') or []:
-            out.append({
-                'name': m.get('name') or m.get('model') or '',
-                'size': m.get('size') or 0,
-                'vram': m.get('size_vram') or 0,
-            })
-        return {'up': True, 'models': out}
-    except Exception:
-        return {'up': True, 'models': []}
+    status = model_backend.status()
+    return {'up': status.available, 'models': [
+        {'name': model.name, 'size': model.size_bytes, 'vram': model.device_bytes}
+        for model in status.models]}
 
 
 def run_ff(args, want_stdout=False):
@@ -766,130 +576,36 @@ def compose(frames, cols=None, rows=None):
 # ------------------------------------------------------------------ 模型管理
 # 模型文件不随软件分发，但软件内置「下载 / 检测」能力：模型包按需单独下载，
 # 落在软件自己的 models 目录里（便携：换台机器把整个文件夹拷走即可继续用）。
-MODEL_CATALOG = [
-    {'name': 'qwen3-vl:4b-instruct', 'size': T('约 3.3 GB'), 'tag': T('推荐'),
-     'note': T('视觉主力。4B 量化后可全部进显存，实测生成约 55–62 tok/s，本机首选。')},
-    {'name': 'qwen3-vl:8b-instruct', 'size': T('约 6.0 GB'), 'tag': '',
-     'note': T('识别质量更高，但需 8GB 以上显存；6GB 显存会溢出到内存、明显变慢。')},
-    {'name': 'minicpm-v', 'size': T('约 5.5 GB'), 'tag': '',
-     'note': T('通用视觉模型，中文场景描述尚可，速度中等。')},
-    {'name': 'qwen2.5vl:7b', 'size': T('约 6.0 GB'), 'tag': '',
-     'note': T('上一代视觉模型；7B 在本机溢出到 CPU，单张图约 191 秒，不推荐。')},
-    {'name': 'llama3.2-vision:11b', 'size': T('约 7.9 GB'), 'tag': '',
-     'note': T('英文场景表现更好，中文描述偏弱，显存需求大。')},
-    {'name': 'gemma3:4b', 'size': T('约 3.3 GB'), 'tag': '',
-     'note': T('Google 多模态小模型，可作为备选对比。')},
-]
+MODEL_CATALOG = model_store.catalog
 
 
 def installed_models(retry: int = 2) -> dict:
-    """返回 {模型名: 字节数}；服务不可用或查询失败时返回空字典。
-
-    服务刚启动的瞬间 /api/tags 可能返回 5xx，所以这里带重试。
-    """
-    for i in range(retry + 1):
-        try:
-            req = urllib.request.Request(_u('/api/tags'))
-            with _OPENER.open(req, timeout=8) as r:
-                d = json.loads(r.read().decode('utf-8'))
-            out = {}
-            for m in d.get('models') or []:
-                n = m.get('name') or m.get('model') or ''
-                if n:
-                    out[n] = m.get('size') or 0
-            return out
-        except Exception:
-            if i < retry:
-                time.sleep(0.6)
-    return {}
+    """返回 {模型名: 字节数}；服务不可用或查询失败时返回空字典。"""
+    return model_store.installed(retry=retry)
 
 
 def list_models() -> list:
     """本机已下载的模型名（升序）。"""
-    return sorted(installed_models())
-
-
-def _norm_model(n: str) -> str:
-    """去掉 registry / namespace 前缀，只留 name:tag，用于比较。"""
-    n = (n or '').strip()
-    return n.split('/')[-1] if n else ''
+    return sorted(model_store.installed())
 
 
 def model_exists(name: str, installed: dict | None = None) -> bool:
     """判断模型是否已下载（忽略 registry 前缀，兼容省略 :latest 的写法）。"""
-    got = installed if installed is not None else installed_models()
-    if not got:
-        return False
-    want = _norm_model(name)
-    for k in got:
-        kk = _norm_model(k)
-        if kk == want:
-            return True
-        if ':' not in want and kk == want + ':latest':
-            return True
-    return False
+    return model_store.exists(name, installed=installed)
 
 
 def pull_model(name: str, on_progress=None, should_stop=None) -> str:
-    """流式下载模型。
-
-    下载源取 config 里的 registry（默认空＝Ollama 官方源）；填了自定义镜像
-    时会拼成「镜像/模型名」再拉取。
-    on_progress(status, completed, total) 会被频繁调用，用于刷新进度。
-    返回 'success' / 'stopped'；服务端报错抛 RuntimeError。
-    """
-    reg = (config().get('registry') or '').strip().rstrip('/')
-    full = name if (not reg or '/' in name) else (reg + '/' + name)
-    body = json.dumps({'model': full, 'stream': True}).encode('utf-8')
-    req = urllib.request.Request(_u('/api/pull'), data=body,
-                                 headers={'Content-Type': 'application/json'})
-    last = ''
-    with _OPENER.open(req, timeout=3600) as r:
-        for raw in r:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                d = json.loads(raw.decode('utf-8'))
-            except Exception:
-                continue
-            if d.get('error'):
-                msg = str(d['error'])
-                low = msg.lower()
-                if 'not exist' in low or 'not found' in low or 'no such' in low:
-                    msg = T('模型不存在，请检查名称拼写（%s）') % msg
-                raise RuntimeError(msg)
-            st = d.get('status') or ''
-            last = st
-            if on_progress:
-                on_progress(st, d.get('completed') or 0, d.get('total') or 0)
-            if should_stop and should_stop():
-                return 'stopped'
-    return last or 'success'
+    """流式下载模型。"""
+    return model_store.download(name, on_progress=on_progress, should_stop=should_stop)
 
 
 # ------------------------------------------------------------------ 模型
 def ask_model(img: bytes, model=MODEL, timeout=300, prompt=None,
               max_tokens: int = 64):
-    """送一张图给模型，返回 (文本, 耗时, prompt token 数, 服务端统计)。
-
-    max_tokens 默认 64 只够短描述；要长描述（写元数据 / .ai.txt）时传大一点，
-    200 个汉字大约 300~400 token。
-    """
-    body = json.dumps({
-        'model': model,
-        'messages': [{'role': 'user', 'content': prompt or PROMPT,
-                      'images': [base64.b64encode(img).decode('ascii')]}],
-        'stream': False, 'keep_alive': KEEP_ALIVE,
-        'options': {'temperature': 0.2, 'num_ctx': CTX, 'num_predict': max_tokens},
-    }).encode('utf-8')
-    req = urllib.request.Request(_u('/api/chat'), data=body,
-                                 headers={'Content-Type': 'application/json'})
-    t0 = time.time()
-    with _OPENER.open(req, timeout=timeout) as r:
-        d = json.loads(r.read().decode('utf-8'))
-    return ((d.get('message') or {}).get('content', ''), time.time() - t0,
-            d.get('prompt_eval_count') or 0, d)
+    """送一张图给模型，返回 (文本, 耗时, prompt token 数, 服务端统计)。"""
+    result = model_backend.describe(img, model=model, prompt=prompt or PROMPT,
+                                    timeout=timeout, max_tokens=max_tokens)
+    return result.text, result.elapsed_seconds, result.prompt_tokens, result.details
 
 
 DESC_BAD = {T('无动作'), T('无活动'), T('无明显动作'), T('无明显活动'), T('未知'), '无', T('无法判断'),
@@ -1629,13 +1345,7 @@ def targets_of(directory: str, all_files=False, limit=0) -> list[str]:
 
 def warmup(model=MODEL) -> tuple[bool, str]:
     """热身：把模型与视觉编码器载进显存，避免第一条承担加载时间。"""
-    try:
-        b = io.BytesIO()
-        Image.new('RGB', (64, 64), (128, 128, 128)).save(b, 'JPEG')
-        ask_model(b.getvalue(), model=model, timeout=180)
-        return True, ''
-    except Exception as e:
-        return False, repr(e)
+    return model_backend.load(model)
 
 
 NAME_MAX = 80       # 文件名（不含扩展名）的长度上限
