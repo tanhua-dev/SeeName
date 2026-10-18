@@ -12,6 +12,7 @@ from strings import T
 from inference import InferenceBackend, ModelStore
 from inference.llama_backend import LlamaBackend
 from inference.local_models import LocalModelStore
+from inference.vulkan import VulkanComponent
 from core import workflow as _workflow
 from core.defaults import (
     MODEL,
@@ -135,7 +136,8 @@ from core.workflow import (
 model_store: ModelStore = LocalModelStore(
     app_dir=APP_DIR, user_data=USER_DATA, config=lambda: config(),
     save_config=lambda **kw: save_config(**kw))
-model_backend: InferenceBackend = LlamaBackend(model_store, context_size=CTX)
+vulkan_component = VulkanComponent(lambda: config(), lambda **kw: save_config(**kw))
+model_backend: InferenceBackend = LlamaBackend(model_store, context_size=CTX, accelerator=vulkan_component)
 
 
 def models_dir(create=True) -> str:

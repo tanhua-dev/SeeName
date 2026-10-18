@@ -21,6 +21,8 @@ AI that truly *sees* your photos and videos and renames them by what's actually 
 ## 当前分支：本地 GGUF 开发版 / Local GGUF development version
 
 当前代码通过 Python 绑定在进程内调用 llama.cpp，默认使用 CPU，无需 Ollama。
+可选 Vulkan 加速入口位于「模型管理 → GPU 加速」。Windows x64 组件的构建、版本匹配、下载清单和发布步骤见 [Vulkan 组件说明](scripts/README-vulkan.md)。默认清单在组件正式发布前为空；此时下载按钮禁用，不会访问占位地址。GPU 支持为实验功能，需要真实硬件验证。
+Vulkan 发布同时提供运行组件和独立源码包；源码包包含完整上游源码、构建脚本、依赖版本及构建记录，可按说明重新构建。
 This branch runs llama.cpp in-process through Python on CPU, without Ollama.
 
 1. 使用 Python 3.12 环境，安装 Pillow、piexif，以及推理和媒体依赖：

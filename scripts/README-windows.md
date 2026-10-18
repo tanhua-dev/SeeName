@@ -12,6 +12,8 @@ Qwen3-VL-2B-Instruct-GGUF。可选择已有模型目录；自定义目录也作�
 此版本禁用文件元数据写回，旧配置也不能开启。识别、核对改名、.ai.txt 和
 目录说明功能保留。视频读取通过 PyAV 完成，不需要 FFmpeg 命令行。
 模型使用 CPU，性能取决于硬件和图片。HEIC 解码未作为本包的已验证功能。
+如果此版本附带已发布的 Vulkan 组件清单，可在「模型管理 → GPU 加速」按需下载。
+组件保存到 %LOCALAPPDATA%\SeeName\backends，不含额外 EXE；需要兼容的显卡驱动。
 
 Extract the entire SeeName folder and run SeeName.exe. Keep _internal intact.
 No separate Python, Ollama, FFmpeg CLI or ExifTool installation is required.

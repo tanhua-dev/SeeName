@@ -21,6 +21,7 @@ from .common import APP_AUTHOR, APP_SUB, APP_TITLE, APP_VER, asset_path, cut, fm
 from .widgets import Hover, Tip
 from .dialogs.information import AboutDialog, HelpDialog, help_path
 from .dialogs.models import ModelDialog
+from .dialogs.acceleration import AccelerationDialog
 from .dialogs.review import PlanDialog, RenameResultDialog, ReplaceDialog
 
 
@@ -118,7 +119,7 @@ class App:
 
     def on_close(self):
         for window in self.root.winfo_children():
-            if isinstance(window, ModelDialog):
+            if isinstance(window, (ModelDialog, AccelerationDialog)):
                 window.cancel_download.set()
         try:
             g = self.root.geometry()
@@ -1112,6 +1113,13 @@ class App:
                 return
         ModelDialog(self.root, self)
 
+    def open_acceleration(self):
+        for window in self.root.winfo_children():
+            if isinstance(window, AccelerationDialog):
+                window.lift()
+                return
+        AccelerationDialog(self.root, self)
+
     def on_rollback(self):
         d = os.path.abspath(self.var_dir.get())
         if not os.path.isdir(d):
@@ -1272,7 +1280,7 @@ class App:
                 self.log(message, 'ok' if ok else 'err')
                 self.update_server(engine.server_info(), engine.list_models(), engine.runtime_status())
                 for window in self.root.winfo_children():
-                    if isinstance(window, ModelDialog):
+                    if isinstance(window, (ModelDialog, AccelerationDialog)):
                         window.refresh()
             elif kind == 'end':
                 self.finish()
@@ -1290,7 +1298,7 @@ class App:
         self._models = models or []
         rt = rt or engine.runtime_status()
         self.lbl_port.configure(text='%s · %s' % (rt['backend'], rt['device']))
-        self._port_hint = rt.get('error') or T('本地推理，不需要端口或服务进程')
+        self._port_hint = rt.get('error') or rt.get('acceleration_error') or T('本地推理，不需要端口或服务进程')
         self.lbl_models.configure(text=T('模型库 %s') % cut(rt['models_dir'], 34))
         self._models_full = rt['models_dir']
         values = list(dict.fromkeys(models + [item['name'] for item in engine.MODEL_CATALOG]))

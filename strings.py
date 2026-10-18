@@ -847,3 +847,23 @@ EN.update({
     '2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。当前使用 CPU。':
         'Both 2B and 4B offer Q4 / Q8 models, sharing their respective Q8 vision projectors. Uses CPU.',
 })
+
+EN.update({
+    'GPU 加速…': 'GPU acceleration…',
+    'GPU 加速 · Vulkan': 'GPU acceleration · Vulkan',
+    '可选 Vulkan 加速（实验功能）': 'Optional Vulkan acceleration (experimental)',
+    '支持兼容的 NVIDIA / AMD / Intel 显卡。需要系统显卡驱动；初始化失败时使用 CPU。': 'Supports compatible NVIDIA / AMD / Intel GPUs. Requires graphics drivers; initialization failures fall back to CPU.',
+    '当前设备：%s\n组件目录：%s': 'Current device: %s\nComponent directory: %s',
+    '组件下载大小：%s': 'Component download size: %s',
+    '下载并启用 Vulkan': 'Download and enable Vulkan',
+    '启用 Vulkan': 'Enable Vulkan',
+    '使用 CPU': 'Use CPU',
+    '已切换到 CPU': 'Switched to CPU',
+    '下载 Vulkan 加速组件（%s）并启用？': 'Download and enable the Vulkan component (%s)?',
+    'Vulkan 组件已启用，识别时加载模型。': 'Vulkan component enabled. The model loads when recognition starts.',
+})
+
+EN.update({
+    '2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。可在“GPU 加速”中配置设备。':
+        'Both 2B and 4B offer Q4 / Q8 models with matching Q8 projectors. Configure devices under GPU acceleration.',
+})

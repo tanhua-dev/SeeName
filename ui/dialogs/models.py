@@ -60,7 +60,7 @@ class ModelDialog(tk.Toplevel):
         self.canvas.bind_all('<MouseWheel>', self._on_wheel)
         foot = tk.Frame(self, bg=theme.C_BG)
         foot.pack(fill='x', padx=14, pady=12)
-        tk.Label(foot, text=T('2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。当前使用 CPU。'),
+        tk.Label(foot, text=T('2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。可在“GPU 加速”中配置设备。'),
                  bg=theme.C_BG, fg=theme.C_SUB, font=(theme.FONT, 9), wraplength=740,
                  justify='left').pack(anchor='w', pady=(0, 8))
         sources = tk.Frame(foot, bg=theme.C_BG)
@@ -84,6 +84,7 @@ class ModelDialog(tk.Toplevel):
         self.btn_directory = ttk.Button(bar, text=T('选择模型目录…'), command=self.change_models_dir)
         self.btn_directory.pack(side='left')
         ttk.Button(bar, text=T('关闭'), command=self.on_close).pack(side='right')
+        ttk.Button(bar, text=T('GPU 加速…'), command=self.app.open_acceleration).pack(side='right', padx=8)
 
     def _on_wheel(self, ev):
         try:

@@ -40,7 +40,7 @@ def _native_modules() -> list[str]:
     return sorted(set(paths))
 
 
-def run_package_check(result_path: str, model_directory: str = '') -> int:
+def run_package_check(result_path: str, model_directory: str = '', vulkan_directory: str = '') -> int:
     import engine
     from core import settings
     from core.features import metadata_writing_enabled
@@ -51,6 +51,7 @@ def run_package_check(result_path: str, model_directory: str = '') -> int:
                   version=getattr(sys, '_seename_version', ''),
                   metadata_writing_enabled=metadata_writing_enabled())
     old_config = settings._CFG
+    old_vulkan_root = engine.vulkan_component.root
     old_save, old_settings_save = engine.save_config, settings.save_config
     root = None
     try:
@@ -70,7 +71,9 @@ def run_package_check(result_path: str, model_directory: str = '') -> int:
                 work = Path(temporary)
                 models = str(Path(model_directory).resolve()) if model_directory else str(work/'models')
                 cfg = dict(write_meta=True, write_txt=False, write_md=False, help_autoshow=False,
-                           model=engine.MODEL, gguf_models_dir=models)
+                           model=engine.MODEL, gguf_models_dir=models, vulkan_enabled=bool(vulkan_directory))
+                if vulkan_directory:
+                    engine.vulkan_component.root = Path(vulkan_directory).resolve()
                 settings._CFG = cfg
                 engine.save_config = settings.save_config = lambda **kw: cfg.update(kw) or cfg
                 report['config_override_blocked'] = not engine.Config(str(work), write_meta=True).write_meta
@@ -121,8 +124,12 @@ def run_package_check(result_path: str, model_directory: str = '') -> int:
                 if not engine.start_server():
                     raise RuntimeError(engine.runtime_status()['error'])
                 import llama_cpp
-                if llama_cpp.llama_supports_gpu_offload():
+                if not vulkan_directory and llama_cpp.llama_supports_gpu_offload():
                     raise RuntimeError('The CPU build must use a CPU-only inference binding')
+                if vulkan_directory:
+                    if not engine.vulkan_component.devices or engine.vulkan_component.error:
+                        raise RuntimeError('Vulkan package check failed: ' + engine.vulkan_component.error)
+                    report['vulkan_devices'] = engine.vulkan_component.devices
                 llama_cpp.llama_model_default_params()
                 llama_cpp.llama_context_default_params()
                 report['native_inference_library'] = True
@@ -151,7 +158,7 @@ def run_package_check(result_path: str, model_directory: str = '') -> int:
                         prompt='请说出图片中央方形的颜色，只输出颜色。')
                     if '红' not in text and 'red' not in text.lower():
                         raise AssertionError('Frozen vision result did not match the red-square fixture: ' + text)
-                    report['model_inference'] = dict(text=text, seconds=seconds)
+                    report['model_inference'] = dict(text=text, seconds=seconds, device=engine.runtime_status()['device'])
                 report['native_modules'] = _native_modules()
                 report['success'] = True
         finally:
@@ -163,6 +170,7 @@ def run_package_check(result_path: str, model_directory: str = '') -> int:
         if root is not None:
             root.destroy()
         settings._CFG = old_config
+        engine.vulkan_component.root = old_vulkan_root
         engine.save_config, settings.save_config = old_save, old_settings_save
         result.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     return 0 if report['success'] else 1

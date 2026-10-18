@@ -13,7 +13,7 @@ from .local_models import LocalModelStore
 
 
 class LlamaBackend:
-    """Own one CPU model, reusing it across requests and serializing native calls.
+    """Own one model, reusing it across requests and serializing native calls.
 
     Native code is imported on start, and weights are opened on load/describe.
     status/diagnostics never wait for inference or invoke the native context.
@@ -23,9 +23,12 @@ class LlamaBackend:
     has returned. Batch stop retains the existing finish-current-file behavior.
     """
 
-    def __init__(self, store: LocalModelStore, *, context_size: int = 2048):
+    def __init__(self, store: LocalModelStore, *, context_size: int = 2048, accelerator=None):
         self.store = store
         self.context_size = context_size
+        self.accelerator = accelerator
+        self._gpu_ready = False
+        self._device = 'CPU'
         self._lock = store.lock
         self._state_lock = threading.Lock()
         self._closing = threading.Event()
@@ -49,6 +52,7 @@ class LlamaBackend:
                     from llama_cpp.llama_multimodal import Qwen3VLChatHandler
                     self._library = llama_cpp
                     self._handler_class = Qwen3VLChatHandler
+                self._gpu_ready = bool(self.accelerator and self.accelerator.load())
                 self._ready = True
                 self._error = ''
                 return True
@@ -64,6 +68,7 @@ class LlamaBackend:
             llm, self._llm = self._llm, None
             self._files = None
             self._size = 0
+            self._device = 'CPU'
         if llm is not None:
             # The pinned Llama.close() closes its chat handler before the model.
             llm.close()
@@ -84,14 +89,29 @@ class LlamaBackend:
         llm = None
         try:
             threads = min(8, max(1, (os.cpu_count() or 4) // 2))
-            handler = self._handler_class(
-                mmproj_path=str(files.projector), use_gpu=False, verbose=False,
-                image_min_tokens=64, image_max_tokens=1024, force_reasoning=False)
-            llm = self._library.Llama(
-                model_path=str(files.model), chat_handler=handler,
-                n_ctx=self.context_size, n_gpu_layers=0, n_threads=threads,
-                n_threads_batch=threads, n_batch=512, seed=42,
-                verbose=False, use_mmap=True)
+            for gpu in ([True, False] if self._gpu_ready else [False]):
+                try:
+                    handler = self._handler_class(
+                        mmproj_path=str(files.projector), use_gpu=gpu, verbose=False,
+                        image_min_tokens=64, image_max_tokens=1024, force_reasoning=False)
+                    llm = self._library.Llama(
+                        model_path=str(files.model), chat_handler=handler,
+                        n_ctx=self.context_size, n_gpu_layers=-1 if gpu else 0, n_threads=threads,
+                        n_threads_batch=threads, n_batch=512, seed=42,
+                        offload_kqv=gpu, op_offload=gpu,
+                        verbose=False, use_mmap=True)
+                    self._device = 'Vulkan' if gpu else 'CPU'
+                    break
+                except Exception as error:
+                    if llm is not None:
+                        llm.close()
+                    elif handler is not None:
+                        handler.close()
+                    llm = handler = None
+                    if not gpu or self._closing.is_set() or time.monotonic() >= deadline:
+                        raise
+                    self._gpu_ready = False
+                    self.accelerator.error = 'Vulkan model initialization failed; using CPU: ' + str(error)
             if self._closing.is_set() or time.monotonic() >= deadline:
                 raise TimeoutError(T('模型操作超时'))
             size = files.size_bytes
@@ -119,6 +139,25 @@ class LlamaBackend:
 
     def describe(self, image: bytes, *, model: str, prompt: str,
                  timeout: float = 300, max_tokens: int = 64) -> InferenceResult:
+        started = time.monotonic()
+        try:
+            return self._describe(image, model=model, prompt=prompt, timeout=timeout, max_tokens=max_tokens)
+        except TimeoutError:
+            raise
+        except Exception as error:
+            # Python-visible GPU failures can retry on CPU. Native process
+            # crashes cannot be recovered in-process and are not claimed here.
+            with self._lock:
+                if not self._gpu_ready or self._closing.is_set():
+                    raise
+                self._release()
+                self._gpu_ready = False
+                self.accelerator.error = 'Vulkan inference failed; using CPU: ' + str(error)
+            return self._describe(image, model=model, prompt=prompt,
+                                  timeout=max(0, timeout - (time.monotonic() - started)), max_tokens=max_tokens)
+
+    def _describe(self, image: bytes, *, model: str, prompt: str,
+                  timeout: float, max_tokens: int) -> InferenceResult:
         started = time.monotonic()
         deadline = started + max(0, timeout)
         with self._lock:
@@ -196,7 +235,8 @@ class LlamaBackend:
         return BackendStatus(self._ready, models)
 
     def diagnostics(self) -> dict:
-        return dict(backend='llama.cpp', device='CPU', initialized=self._ready,
+        return dict(backend='llama.cpp', device=self._device, initialized=self._ready,
+                    acceleration_error=self.accelerator.error if self.accelerator else '',
                     found=self._library is not None or importlib.util.find_spec('llama_cpp') is not None,
                     busy=self._busy, error=self._error, models_dir=self.store.directory(create=False))
 
@@ -210,6 +250,7 @@ class LlamaBackend:
                 self._release()
             finally:
                 self._ready = False
+                self._gpu_ready = False
                 self._busy = ''
                 self._error = ''
                 self._closing.clear()
