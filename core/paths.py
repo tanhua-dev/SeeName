@@ -23,7 +23,7 @@ def _user_data_dir() -> str:
     macOS 下 .app  bundle 里写不进去（也不该写——放在 /Applications 里会因
     权限/签名失败，且升级即丢），所以改成系统的
     ~/Library/Application Support/SeeName。
-    模型库默认还跟着软件目录走（方便整包拷贝），该目录不可写时才退到这里。
+    在线下载的模型另存到各平台的用户数据目录；不写进程序目录。
     """
     if IS_MAC and getattr(sys, 'frozen', False):
         p = os.path.expanduser('~/Library/Application Support/SeeName')

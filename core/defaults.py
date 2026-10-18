@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 
-MODEL = 'Qwen3VL-4B-Instruct-Q4_K_M'
+MODEL = 'Qwen3VL-4B-Instruct-Q8_0'
 DEFAULT_PORT = 11500        # 自带运行时的私有端口（不抢占系统 Ollama 的 11434）
 CTX = 2048
 KEEP_ALIVE = '15m'

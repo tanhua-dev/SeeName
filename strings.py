@@ -824,3 +824,26 @@ EN.update({
     '!! 本地推理库初始化失败，任务终止': '!! Local inference library initialization failed; task stopped',
     '!! 模型加载失败：%s': '!! Model loading failed: %s',
 })
+
+EN.update({
+    '支持下载 4B / 2B Q8 模型；已有 Q4 / F16 模型仍可手动导入。当前使用 CPU。': 'Download 4B / 2B Q8 pairs, or import existing Q4 / F16 models. Uses CPU.',
+    '国外：Hugging Face': 'International: Hugging Face',
+    '国内：ModelScope': 'China: ModelScope',
+    '取消下载': 'Cancel download',
+    '正在下载…': 'Downloading…',
+    '下载': 'Download',
+    '下载模型': 'Download model',
+    '下载 %s（%s）到：\n%s\n\n是否开始下载？': 'Download %s (%s) to:\n%s\n\nStart download?',
+    '下载已取消，保留进度，可重新点击下载继续。': 'Download cancelled. Progress is retained; click Download to resume.',
+    '模型下载完成，可点击“使用”：%s': 'Download complete. Click Use to select: %s',
+    '下载任务结束，详情见主窗口运行日志。': 'Download task ended. See the main window log for details.',
+    '正在取消下载，请稍候…': 'Cancelling download, please wait…',
+    '未找到本地模型，请在模型管理中下载 4B / 2B 模型，或选择已有模型目录。': 'No local models found. Download a 4B / 2B model in Model manager, or select an existing directory.',
+    '模型「%s」缺少配套文件。\n\n现在打开「模型管理」下载模型或选择本地目录吗？': 'Files for model "%s" are incomplete.\n\nOpen Model manager to download or select a local directory?',
+    '该模型仅支持手动导入。': 'This model supports manual import only.',
+})
+
+EN.update({
+    '2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。当前使用 CPU。':
+        'Both 2B and 4B offer Q4 / Q8 models, sharing their respective Q8 vision projectors. Uses CPU.',
+})

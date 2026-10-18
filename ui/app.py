@@ -117,6 +117,9 @@ class App:
         return default
 
     def on_close(self):
+        for window in self.root.winfo_children():
+            if isinstance(window, ModelDialog):
+                window.cancel_download.set()
         try:
             g = self.root.geometry()
             m = re.match(r'^(\d+)x(\d+)', g)
@@ -1092,6 +1095,10 @@ class App:
     def _maybe_help(self):
         """首次启动自动弹一次说明；用户勾了「下次不再显示」就写进 config。"""
         try:
+            if not engine.installed_models():
+                messagebox.showinfo(APP_TITLE, T('未找到本地模型，请在模型管理中下载 4B / 2B 模型，或选择已有模型目录。'))
+                self.open_model_dialog()
+                return
             if self._sw('help_autoshow', True):
                 self.open_help()
         except Exception:
@@ -1156,7 +1163,7 @@ class App:
         if need_model and not engine.model_exists(model):
             if messagebox.askyesno(
                     APP_TITLE,
-                    T('模型「%s」缺少配套文件。\n\n现在打开「模型管理」选择本地 GGUF 目录吗？') % model):
+                    T('模型「%s」缺少配套文件。\n\n现在打开「模型管理」下载模型或选择本地目录吗？') % model):
                 self.open_model_dialog()
             return
 

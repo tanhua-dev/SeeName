@@ -198,7 +198,11 @@ def model_problems() -> dict:
 def selected_model() -> str:
     """Old Ollama identifiers fall back to the native default, without rewriting config."""
     name = str(config().get('model') or '')
-    return name if any(item['name'] == name for item in MODEL_CATALOG) else MODEL
+    if any(item['name'] == name for item in MODEL_CATALOG):
+        return name
+    installed = model_store.installed()
+    return next((item['name'] for item in MODEL_CATALOG if item['name'] in installed),
+                'Qwen3VL-4B-Instruct-Q8_0')
 
 
 def select_model(name: str):

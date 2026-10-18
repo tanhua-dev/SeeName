@@ -22,7 +22,7 @@ Video probing and frame extraction use PyAV in-process and need no FFmpeg execut
    - To actually rename files: bottom-right `⋯ More` → `Review and rename…` → check, then click `Apply rename`.
    - To just preview: stop here. **Nothing is renamed until you click `Apply rename`.**
 
-Before the first run, open `⋯ More` → `Model manager…` and select a local GGUF directory. The default is `Qwen3VL-4B-Instruct-Q4_K_M.gguf`, with `mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf` in the same directory (F16 projector is also supported). Immediate subdirectories are checked too. This version uses llama.cpp directly through Python on CPU; it needs no Ollama process and has no in-app downloads.
+If no local models are found, Model manager offers downloads of 4B / 2B Q4 / Q8 pairs from Hugging Face or ModelScope, with cancellation, resume and SHA-256 verification. Existing directories remain supported. Default roots: Windows `%LOCALAPPDATA%\SeeName\models`, macOS `~/Library/Application Support/SeeName/models`, Linux `${XDG_DATA_HOME:-~/.local/share}/SeeName/models`; pairs live in `Qwen3-VL-4B-Instruct-GGUF` / `Qwen3-VL-2B-Instruct-GGUF` subdirectories. A custom model directory also becomes the download target. Uses in-process llama.cpp on CPU, without Ollama.
 
 Models load when recognition starts, or when you click the status indicator. Changing the model or directory releases the old model without moving weights. The vision encoder initializes during the first image request.
 
@@ -44,7 +44,7 @@ Models load when recognition starts, or when you click the status indicator. Cha
 - **Frames per video**: how many images are sent to the model. `Auto` picks by length (2 for short clips, 6 for long ones) — usually leave it. Raise it (4/6/8) if results look off; lower it for simple footage to go faster.
 - **Max items**: how many files this run handles; `0` means all. Set `10` to try a small batch first.
 - **Re-process already renamed**: off by default. Tick it to re-recognize files that already have a `视2024…` style name; leave it off to skip them and work in batches.
-- **Model**: select a local Qwen3-VL-4B-Instruct Q4, Q8 or F16 model; Q4 is the default. Model manager checks matching main-model/mmproj files and lets you choose the directory.
+- **Model**: select 4B / 2B Q4 / Q8 or import existing 4B F16 weights. Default: 4B Q8. Model manager supports downloads and local directory selection.
 - **Online precise location**: **off by default**. While off the app sends no network requests at all and places come from the built-in offline database (district level). Turn it on to query an online map service for street/town level names — if it fails or you are offline, it silently falls back to the offline database.
 - **Amap API key**: with online location on, this is used for coordinates inside China to get street-level addresses. Get a free key at lbs.amap.com; without it, Chinese coordinates keep using the offline database (coordinates outside China are unaffected — they use Nominatim).
 - **Address detail**: how precise online lookups should be — `District` or `Street`.

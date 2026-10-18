@@ -33,8 +33,15 @@ This branch runs llama.cpp in-process through Python on CPU, without Ollama.
    绑定从固定的 Git 提交安装，需要 Git、CMake 和 C++ 构建工具；Python 还须提供 Tkinter。
    若已有 Conda `seename` 环境，也可用 `conda run -n seename python main.py` 启动。
 2. 将 `Qwen3VL-4B-Instruct-Q4_K_M.gguf` 与 `mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf` 放在同一目录。
-   默认检查 `models/` 及下一层子目录；也可在「模型管理…」选择现有目录。Q8/F16 主模型及 F16 视觉投影也可发现，实际推理本轮只验证 Q4+Q8 投影。
-3. 开始识别时自动加载模型，或点击底部状态提前加载。当前不提供软件内在线下载；旧 Ollama blobs 不能直接使用。
+   也可在「模型管理…」选择现有目录，检查该目录及下一层子目录。未指定目录时，也兼容程序旁原有的 `models/`。Q8/F16 主模型及 F16 视觉投影也可发现；此前实际推理已验证 4B Q4+Q8 投影。
+3. 开始识别时自动加载模型，或点击底部状态提前加载。没有模型时会提示打开模型管理，可下载 4B / 2B Q4 / Q8 模型及配套投影，或选择本地目录；旧 Ollama blobs 不能直接使用。
+
+在线下载支持 Hugging Face（国外）和 ModelScope（国内），使用 Python HTTPS，不调用外部程序。
+下载到 `.part` 文件，支持取消、重新点击继续；校验固定文件大小和 SHA-256 后才启用。
+默认保存地址：Windows `%LOCALAPPDATA%\SeeName\models`；macOS `~/Library/Application Support/SeeName/models`；Linux `${XDG_DATA_HOME:-~/.local/share}/SeeName/models`。
+其下分别使用 `Qwen3-VL-4B-Instruct-GGUF` 和 `Qwen3-VL-2B-Instruct-GGUF` 子目录。
+自定义模型目录同时作为下载目标；未配置自定义目录时也会检查程序旁原有的 `models`，无需移动已有文件。
+含配套 Q8 投影：4B Q4 约 2.75 GiB、4B Q8 约 4.41 GiB，2B Q4 约 1.45 GiB、2B Q8 约 2.12 GiB。同规格的 Q4 / Q8 共用投影，已校验的文件不会重复下载；2B 已接入模型发现和选择，实际推理效果仍需实机验证。
 
 Use Python 3.12 with Tkinter and install Pillow, piexif and the dependencies
 pinned in `requirements-inference.txt` and `requirements-media.txt` using the
