@@ -74,8 +74,8 @@ the legacy release and has not been adapted to this branch.
 
 | 版本 Edition | 大小 Size | 说明 Notes | 获取 Get it |
 |---|---|---|---|
-| Slim（不含模型） | 1.36 GB | 首次使用需自行拉取模型，见下 | GitHub Releases（本页） |
-| Full（含模型） | 4.22 GB | 解压即用 | 百度网盘（链接见 Release 说明） |
+| Slim（不含模型） | 1.36 GB | 首次使用需自行拉取模型，见下 | [上游 GitHub Releases](https://github.com/tanhua-dev/SeeName/releases) |
+| Full（含模型） | 4.22 GB | 解压即用 | 百度网盘（链接见[上游 Release 说明](https://github.com/tanhua-dev/SeeName/releases)） |
 
 
 Slim 版首次使用前拉取模型 / For the Slim edition, pull the model first:

@@ -17,7 +17,7 @@ CMake and a Vulkan SDK including glslc and SPIRV-Headers on the build machine.
 These build tools are never distributed with the component.
 
 ```powershell
-python -B scripts/build_vulkan.py --vulkan-sdk C:\VulkanSDK\<version> --version v1 --download-base-url https://github.com/tubo70/SeeName/releases/download/<release-tag>
+python -B scripts/build_vulkan.py --vulkan-sdk C:\VulkanSDK\<version> --version v1 --download-base-url https://github.com/tanhua-dev/SeeName/releases/download/<release-tag>
 ```
 
 The script fetches a checksum-pinned llama.cpp archive at the exact submodule
@@ -62,7 +62,12 @@ SeeName.exe --package-check result.json --check-vulkan-directory <backends-root>
 This requires a compatible installed component and GPU, uses only the supplied
 directories for model/plugin lookup, and records the actual inference device.
 
-Upload both binary and source ZIPs with their checksums to the same Release,
+Download links for SeeName components use the upstream repository,
+https://github.com/tanhua-dev/SeeName/releases, including when building in a fork.
+Model weights and third-party build dependencies retain their provider URLs.
+Only configure a release tag after its component assets have been published.
+
+Upload both binary and source ZIPs with their checksums to the same upstream Release,
 verify the URLs and SHA-256 values, then bundle
 the generated catalog when building the application:
 
