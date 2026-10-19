@@ -313,7 +313,7 @@ EN.update({
     '找不到 ffmpeg，请确认软件目录里的 ffmpeg.exe 还在。':
         'ffmpeg not found. Make sure ffmpeg.exe is still in the program folder.',
     '把 %d 行的「%s」改成「%s」？\n\n':
-        'Replace "%s" with "%s" in %d rows?\n\n',
+        'In %d rows, replace "%s" with "%s"?\n\n',
     '把模型库切换到这里？（会重启推理服务；原目录里的文件不会被动）':
         'Switch the models directory here? (restarts the inference service; files in the old directory are untouched)',
     '把模型库切换到：\n%s\n\n切换后会重启自带推理服务。':
@@ -581,7 +581,7 @@ EN.update({
     '想接着处理就点「核对并改名…」（只含已识别的部分），或改完参数再「▶ 重新开始识别」':
         'To continue, click "Review & rename…" (only analyzed items are included), or adjust the settings and click "▶ Restart analysis"',
     '把 %d 行的「%s」改成「%s」？\n\n（只改表格内容，文件名要等点「应用改名」才动）':
-        'Replace "%s" with "%s" in %d rows?\n\n(edits the table only; filenames change when you click "Apply renames")',
+        'In %d rows, replace "%s" with "%s"?\n\n(edits the table only; filenames change when you click "Apply renames")',
     '把模型库切换到：\n%s\n\n切换后会重启自带推理服务。原目录里的模型不会自动搬过去（需要时手动复制即可）。\n\n继续？':
         'Switch models directory to:\n%s\n\nThe bundled inference service will restart. Models in the old directory are not moved automatically (copy them manually if needed).\n\nContinue?',
     '推理服务不可用，无法下载。\n请确认软件目录里的 runtime\\ollama 是否完整。':
