@@ -334,22 +334,29 @@ def run_batch(cfg: Config, on_log=None, on_item=None, on_progress=None,
     else:
         log(T('=== 联网精确定位：关（纯离线，全程不发网络请求）'))
     rs = runtime_status()
-    log(T('=== 推理运行时：%s（%s）') % (rs['exe'] or T('未找到'), rs['label']))
+    log(T('=== 推理后端：%s · %s') % (rs['backend'], rs['device']))
     log(T('=== 模型库：%s') % rs['models_dir'])
 
     # AI 描述总开关关着时全程不碰模型：连推理服务和模型热身都跳过（纯离线快路径）
-    if getattr(cfg, 'ai_desc', True):
+    needs_model = bool(getattr(cfg, 'ai_desc', True)) and (
+        cfg.videos or (cfg.photos and cfg.describe_photos))
+    if needs_model:
         if not backend.start(on_log=log):
-            log(T('!! 推理服务不可用（自带运行时启动失败），任务终止'))
+            log(T('!! 本地推理库初始化失败，任务终止'))
             rep.close(); logf.close()
             return {'total': 0, 'done': 0, 'failed': 0, 'stopped': True, 'elapsed': 0.0,
                     'plan': [], 'plan_path': ''}
 
-        phase(T('模型热身'))
+        phase(T('加载模型'))
         ok, err = backend.load(cfg.model)
-        log(T('=== 模型热身%s') % (T('完成') if ok else T('失败（继续）：%s') % err))
+        if not ok:
+            log(T('!! 模型加载失败：%s') % err)
+            rep.close(); logf.close()
+            return {'total': 0, 'done': 0, 'failed': 0, 'stopped': True, 'elapsed': 0.0,
+                    'plan': [], 'plan_path': ''}
+        log(T('=== 模型加载完成'))
     else:
-        log(T('=== AI 描述：关（纯离线，不调用模型），跳过推理服务与模型热身'))
+        log(T('=== 当前任务不需要模型，跳过模型加载'))
 
     # ---- 收集目标：先视频，再（可选）照片
     vids = list_videos(d) if cfg.videos else []
@@ -367,7 +374,7 @@ def run_batch(cfg: Config, on_log=None, on_item=None, on_progress=None,
     desc_photos = bool(getattr(cfg, 'ai_desc', True)) and bool(cfg.describe_photos)
     if cfg.photos and shots:
         log(T('=== 照片只读 EXIF 时间与 GPS，不调模型，秒级完成')
-            + (T('；已开启「照片也写描述」，每张约 11 秒') if desc_photos else ''))
+            + (T('；已开启「照片也写描述」，耗时取决于图片和 CPU') if desc_photos else ''))
 
     # ---- 预扫描视频的拍摄时间与 GPS（照片不进这里）
     manual = dict(load_manual_times(d, state_dir))

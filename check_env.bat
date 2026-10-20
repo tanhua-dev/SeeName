@@ -2,42 +2,21 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-
+set "PYTHONIOENCODING=utf-8"
 echo ============================================
-echo  SeeName - environment check (by tanhua)
+echo  SeeName - local GGUF environment check
 echo ============================================
 echo.
-
-if exist "%~dp0ffmpeg.exe" (echo [OK]   ffmpeg.exe found) else (echo [FAIL] ffmpeg.exe MISSING)
-if exist "%~dp0runtime\ollama\ollama.exe" (echo [OK]   runtime\ollama\ollama.exe found) else (echo [FAIL] runtime\ollama\ollama.exe MISSING)
-if exist "%~dp0models" (echo [OK]   models folder found) else (echo [WARN] models folder missing, will be created)
-
+echo Inference uses Python and llama.cpp. Ollama is not required.
+echo Model files: a supported GGUF main model plus matching mmproj.
+echo FFmpeg is still required for video extraction and metadata.
 echo.
-echo ---- bundled runtime version ----
-if exist "%~dp0runtime\ollama\ollama.exe" "%~dp0runtime\ollama\ollama.exe" --version
-
-echo.
-echo ---- model store ----
-if exist "%~dp0models" dir /b "%~dp0models\blobs" 2>nul | find /c /v "" > "%TEMP%\_th_count.txt"
-if exist "%TEMP%\_th_count.txt" (
-    set /p BLOBS=<"%TEMP%\_th_count.txt"
-    call echo model blobs: %%BLOBS%%
-    del "%TEMP%\_th_count.txt" 2>nul
-)
-
-echo.
-echo ---- GUI self test ----
-set "PY="
-for %%P in (
-  "%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
-  "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
-) do if not defined PY if exist %%P set "PY=%%P"
-
-if not defined PY (
-    echo [WARN] Python not found - skipped. Double-click SeeName.exe instead.
+where conda >nul 2>nul
+if not errorlevel 1 (
+    call conda run --no-capture-output -n seename python -B -c "import engine; print('Model directory:', engine.models_dir(False)); print('Usable model pairs:', engine.installed_models()); print('Binding initialized:', engine.start_server()); print('Backend:', engine.runtime_status()); engine.shutdown_server()"
 ) else (
-    "%PY%" "%~dp0main.py" --selftest
+    python -B -c "import engine; print('Model directory:', engine.models_dir(False)); print('Usable model pairs:', engine.installed_models()); print('Binding initialized:', engine.start_server()); print('Backend:', engine.runtime_status()); engine.shutdown_server()"
 )
-
 echo.
+echo No model weights were loaded by this check.
 pause

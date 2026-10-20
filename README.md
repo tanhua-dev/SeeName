@@ -18,8 +18,41 @@ AI that truly *sees* your photos and videos and renames them by what's actually 
 
 作者 / By tanhua
 
+## 当前分支：本地 GGUF 开发版 / Local GGUF development version
 
-## 下载 Download
+当前代码通过 Python 绑定在进程内调用 llama.cpp，默认使用 CPU，无需 Ollama。
+This branch runs llama.cpp in-process through Python on CPU, without Ollama.
+
+1. 使用 Python 3.12 环境，安装 Pillow、piexif，以及 `requirements-inference.txt` 固定的绑定版本：
+   ```sh
+   python -m pip install pillow piexif
+   python -m pip install -r requirements-inference.txt
+   python main.py
+   ```
+   绑定从固定的 Git 提交安装，需要 Git、CMake 和 C++ 构建工具；Python 还须提供 Tkinter。
+   若已有 Conda `seename` 环境，也可用 `conda run -n seename python main.py` 启动。
+2. 将 `Qwen3VL-4B-Instruct-Q4_K_M.gguf` 与 `mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf` 放在同一目录。
+   默认检查 `models/` 及下一层子目录；也可在「模型管理…」选择现有目录。Q8/F16 主模型及 F16 视觉投影也可发现，实际推理本轮只验证 Q4+Q8 投影。
+3. 开始识别时自动加载模型，或点击底部状态提前加载。当前不提供软件内在线下载；旧 Ollama blobs 不能直接使用。
+
+Use Python 3.12 with Tkinter and install Pillow, piexif and the binding revision
+pinned in `requirements-inference.txt` using the commands above. The pinned Git
+source install needs Git, CMake and a C++ toolchain. An existing Conda `seename`
+environment can also run `conda run -n seename python main.py`. Keep the main
+GGUF and matching mmproj in one directory; choose it in Model manager. Models
+load on demand.
+
+视频抽帧及元数据写入仍依赖 FFmpeg，部分 HEIC 元数据写入仍可能依赖 ExifTool。
+「最终安装包只有主程序一个 EXE」尚未完成；下一步是媒体依赖迁移和完整打包验证。
+本轮只验证 Windows CPU，macOS/Linux 及 GPU 尚未实机验证。`build_mac.sh` 仍属于下面的旧版打包流程，尚未适配当前分支。
+
+FFmpeg and some HEIC metadata operations still need external tools. The final
+single-EXE distribution is pending media migration and full packaging checks.
+Only Windows CPU has been tested; the existing macOS build script is still for
+the legacy release and has not been adapted to this branch.
+
+
+## 已发布的 v1.0 旧版下载 / Legacy v1.0 downloads
 
 
 | 版本 Edition | 大小 Size | 说明 Notes | 获取 Get it |
@@ -48,10 +81,12 @@ SHA256 校验 / checksums:
 ## 运行配置 System requirements
 
 
-- 推荐 Recommended：NVIDIA 独立显卡（6GB 以上显存）、16GB 以上内存，AI 识别速度快。
-  A dedicated NVIDIA GPU (6GB+ VRAM) and 16GB+ RAM for fast AI recognition.
-- 配置较低或无独显 Low-end / no dedicated GPU：机器能运行，但 AI 识别会变慢；可以在设置里关掉“AI描述”总开关，软件会只按时间 + 地点命名，一样能用。
-  The app still works; turn off the "AI描述" (AI description) master switch in settings and files will be named by time + place only, without calling the AI model.
+- 当前源码版使用 CPU，建议 16GB 以上内存。显卡不会自动启用；耗时取决于 CPU、图片和模型。
+  The current source version uses CPU inference; 16GB+ RAM is recommended. A GPU
+  is not enabled automatically; speed depends on the CPU, images and model.
+- 可以在设置里关掉“AI描述”总开关，只按时间 + 地点命名；照片未开启“照片也写描述”时也不加载模型。
+  Turn off the "AI description" master switch to name by time and place only.
+  Photo-only jobs also skip model loading when photo descriptions are disabled.
 
 
 ## 开源协议 License

@@ -15,12 +15,14 @@
 1. **Pick a folder**: type a path in the `Folder` box, or click `Browse…`. The drop-down on the right holds saved preset folders — click one to jump to it.
 2. **Pick what to process**: under ` Scope `, tick `Videos` and/or `Photos`; the `AI description` box at the front is the master switch.
    - `AI description` is on by default: with it off, neither videos nor photos go through the model — files are named by `capture time + place` only, and the run finishes in seconds.
-   - `Write content description for photos` is on by default: each photo spends about 11 extra seconds with the model and comes back with a description like "cat close-up". Untick it for a fast pass that only reads time and GPS. It is a sub-option of `AI description` and is greyed out when the master switch is off.
+   - `Write content description for photos` is on by default: each photo spends additional CPU time with the model and comes back with a description like "cat close-up". Untick it for a fast pass that only reads time and GPS. It is a sub-option of `AI description` and is greyed out when the master switch is off.
 3. **Click `▶ Start recognition`**: when the progress bar finishes, results appear in the `Results` table below.
    - To actually rename files: bottom-right `⋯ More` → `Review and rename…` → check, then click `Apply rename`.
    - To just preview: stop here. **Nothing is renamed until you click `Apply rename`.**
 
-The first run needs the vision model. Click the `● Model not running` dot in the bottom status bar to start the service; if the model is not downloaded yet, the app will ask you, or open `⋯ More` → `Model manager…` and click `Download`.
+Before the first run, open `⋯ More` → `Model manager…` and select a local GGUF directory. The default is `Qwen3VL-4B-Instruct-Q4_K_M.gguf`, with `mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf` in the same directory (F16 projector is also supported). Immediate subdirectories are checked too. This version uses llama.cpp directly through Python on CPU; it needs no Ollama process and has no in-app downloads.
+
+Models load when recognition starts, or when you click the status indicator. Changing the model or directory releases the old model without moving weights. The vision encoder initializes during the first image request.
 
 ## 3. Parts of the window
 
@@ -30,17 +32,17 @@ The first run needs the vision model. Click the `● Model not running` dot in t
 - **Progress bar + status light**: the light on the right reads `● Not started`, `● Recognizing…`, `● Stopping…`, `● Stopped manually · x/y done` or `● Done · x items`.
 - **Results table**: columns are `#`, `Original name`, `New name`, `Place`, `Description`, `Time`, `Status`. Below it are `Copy all` and `Clear`.
 - **Right sidebar**: `What the model sees` on top (shows the image actually sent to the model), `⚙ Settings` below. Click `»` at the top right to collapse it; collapsed, only a `⚙` remains — click that to expand again.
-- **Bottom status bar**: model status dot (`● Model not running` / `● Model running`; **click the dot to start the model service**), then the port, then the model library path (hover to see the full path).
+- **Bottom status bar**: model readiness/loading/error state, then `llama.cpp · CPU`, then the model directory. Click the status to load in advance; hover for errors or full paths.
 - **`⋯ More`** (bottom right): `Review and rename…`, `Roll back renames in this folder`, `Open this folder`, `Open recognition report`, `Open rename ledger`, `Model manager…`, `About`, and the run-log toggle.
 - **`▸ Run log`**: expands to show details for each file. It opens by itself when something goes wrong.
 
 ## 4. Every setting, explained
 
-- **AI description**: **master switch, on by default**. While on, videos are sampled into frames and photos (if `Write content description for photos` is ticked) are sent to the local vision model, which is what produces descriptions like "cat close-up". **With it off the model is never called**: no frame extraction, no model pass — everything is named by `capture time + place` only and finishes in seconds. Use it on slow machines, or when you just want files sorted by time and place first. While off, `Write content description for photos` is greyed out and the app no longer asks you to download a model first.
+- **AI description**: **master switch, on by default**. While on, videos are sampled into frames and photos (if `Write content description for photos` is ticked) are sent to the local vision model, which is what produces descriptions like "cat close-up". **With it off the model is never called**: no frame extraction, no model pass — everything is named by `capture time + place` only and finishes in seconds. Use it on slow machines, or when you just want files sorted by time and place first. While off, `Write content description for photos` is greyed out and the app no longer asks you to prepare a local model first.
 - **Frames per video**: how many images are sent to the model. `Auto` picks by length (2 for short clips, 6 for long ones) — usually leave it. Raise it (4/6/8) if results look off; lower it for simple footage to go faster.
 - **Max items**: how many files this run handles; `0` means all. Set `10` to try a small batch first.
 - **Re-process already renamed**: off by default. Tick it to re-recognize files that already have a `视2024…` style name; leave it off to skip them and work in batches.
-- **Model**: pick one of the downloaded models. The `Model manager…` button below downloads models, moves the model library, or changes the download source.
+- **Model**: select a local Qwen3-VL-4B-Instruct Q4, Q8 or F16 model; Q4 is the default. Model manager checks matching main-model/mmproj files and lets you choose the directory.
 - **Online precise location**: **off by default**. While off the app sends no network requests at all and places come from the built-in offline database (district level). Turn it on to query an online map service for street/town level names — if it fails or you are offline, it silently falls back to the offline database.
 - **Amap API key**: with online location on, this is used for coordinates inside China to get street-level addresses. Get a free key at lbs.amap.com; without it, Chinese coordinates keep using the offline database (coordinates outside China are unaffected — they use Nominatim).
 - **Address detail**: how precise online lookups should be — `District` or `Street`.
@@ -76,10 +78,10 @@ Open `⋯ More` → `Review and rename…`. The big table has columns `Original 
   No capture time could be read from that file. Open `Review and rename…` and type one into the `Capture time` cell (for example `2025-10-11 14:30`) — it will then be renamed.
 
 - **It is slow.**
-  A discrete GPU makes a huge difference: an NVIDIA card does a file in roughly ten-odd seconds, pure CPU is much slower. To speed up: untick `Write content description for photos`, lower `Frames per video`, switch to the smaller 2b model in `Model manager…`, or set `Max items` and try a small batch first.
+  This version uses CPU. Speed depends on hardware, images and description length. Start with Q4 and a small batch. Disable photo descriptions, reduce frames, or turn off AI description for time/place-only naming. Stop finishes the current file and saves a partial plan; exiting requests an inference abort before releasing resources.
 
-- **It says the model is not downloaded.**
-  Go to `⋯ More` → `Model manager…`, select `qwen3-vl:4b-instruct` and click `Download`. The runtime and place databases ship with the app — only the model needs the network (about 3 GB, once).
+- **It says model files are incomplete.**
+  Select a directory containing the matching GGUF main model and mmproj. Ollama blob directories cannot be used directly. If duplicate model pairs exist, select their specific subdirectory. Model manager shows missing/duplicate file reasons.
 
 - **Can it damage my originals?**
   It only changes file names — no re-encoding, no compression, the picture is untouched. `Write file metadata` only **adds** description fields; your own captions, capture time, GPS and camera model are never deleted or changed.
@@ -95,7 +97,7 @@ Open `⋯ More` → `Review and rename…`. The big table has columns `Original 
 - Recognition and renaming happen entirely on your computer. Photos and videos do not leave the machine, and results are not uploaded.
 - `Online precise location` is **off** by default: while off, the app sends no network requests and all place names come from the built-in offline database.
 - With `Online precise location` on, only **latitude and longitude** are sent to the map provider to resolve an address — never the file itself.
-- The only moment the network is needed is **downloading the model package the first time**. After that it works offline.
+- There are no in-app model downloads in this version. Prepare local GGUF files first; recognition works offline with online precise location disabled.
 
 ## 8. About
 

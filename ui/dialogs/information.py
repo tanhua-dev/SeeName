@@ -200,6 +200,9 @@ class HelpDialog(tk.Toplevel):
             engine.save_config(help_autoshow=not bool(self.var_noauto.get()))
         except Exception:
             pass
+        # Release the Tcl variable on the Tk thread. A closed window may remain
+        # in a Python cycle until a model worker triggers garbage collection.
+        self.var_noauto = None
         self.destroy()
 
 
