@@ -774,6 +774,8 @@ EN.update({
 
 # Local GGUF inference and model-library management.
 EN.update({
+    '无法加载 PyAV，请安装 requirements-media.txt 中的依赖。':
+        'Cannot load PyAV. Install the dependencies in requirements-media.txt.',
     '自检：本地模型状态与设备显示正常': 'selftest: local model and device status display OK',
     '照片也调用模型生成描述（CPU 耗时较长）': 'Also describe photos with the model (slower on CPU)',
     '；已开启「照片也写描述」，耗时取决于图片和 CPU': '; photo descriptions enabled; time depends on images and CPU',

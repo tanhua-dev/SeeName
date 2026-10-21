@@ -101,6 +101,8 @@
 
 ## 八、关于
 
+视频探测和抽帧通过 PyAV 在进程内完成，不需要独立 FFmpeg 程序。视频的「写入文件元数据」暂时仍需要 FFmpeg；这部分尚未迁移。
+
 - 显影 SeeName
 - 看见，即命名。/ See it. Name it.
 - 作者：tanhua

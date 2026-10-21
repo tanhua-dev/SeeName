@@ -117,7 +117,7 @@ def rename_one(path: str, model=MODEL, frames=0, meta=None,
     fn = os.path.basename(path)
     m = (meta or {}).get(fn) or {}
     if 'dur' in m:
-        # 预扫描已经 probe 过一次，别再来一遍 ffmpeg（每个视频省约 0.2s）
+        # 复用预扫描结果，避免再次打开容器读取元数据。
         info = {'dur': m.get('dur', 0.0), 'creation': '', 'gps': m.get('gps')}
     else:
         info = probe(path)

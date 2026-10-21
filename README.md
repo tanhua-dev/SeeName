@@ -23,10 +23,11 @@ AI that truly *sees* your photos and videos and renames them by what's actually 
 当前代码通过 Python 绑定在进程内调用 llama.cpp，默认使用 CPU，无需 Ollama。
 This branch runs llama.cpp in-process through Python on CPU, without Ollama.
 
-1. 使用 Python 3.12 环境，安装 Pillow、piexif，以及 `requirements-inference.txt` 固定的绑定版本：
+1. 使用 Python 3.12 环境，安装 Pillow、piexif，以及推理和媒体依赖：
    ```sh
    python -m pip install pillow piexif
    python -m pip install -r requirements-inference.txt
+   python -m pip install -r requirements-media.txt
    python main.py
    ```
    绑定从固定的 Git 提交安装，需要 Git、CMake 和 C++ 构建工具；Python 还须提供 Tkinter。
@@ -35,19 +36,26 @@ This branch runs llama.cpp in-process through Python on CPU, without Ollama.
    默认检查 `models/` 及下一层子目录；也可在「模型管理…」选择现有目录。Q8/F16 主模型及 F16 视觉投影也可发现，实际推理本轮只验证 Q4+Q8 投影。
 3. 开始识别时自动加载模型，或点击底部状态提前加载。当前不提供软件内在线下载；旧 Ollama blobs 不能直接使用。
 
-Use Python 3.12 with Tkinter and install Pillow, piexif and the binding revision
-pinned in `requirements-inference.txt` using the commands above. The pinned Git
+Use Python 3.12 with Tkinter and install Pillow, piexif and the dependencies
+pinned in `requirements-inference.txt` and `requirements-media.txt` using the
+commands above. The pinned Git
 source install needs Git, CMake and a C++ toolchain. An existing Conda `seename`
 environment can also run `conda run -n seename python main.py`. Keep the main
 GGUF and matching mmproj in one directory; choose it in Model manager. Models
 load on demand.
 
-视频抽帧及元数据写入仍依赖 FFmpeg，部分 HEIC 元数据写入仍可能依赖 ExifTool。
-「最终安装包只有主程序一个 EXE」尚未完成；下一步是媒体依赖迁移和完整打包验证。
+视频信息、拍摄时间/GPS 和抽帧通过 PyAV 在进程内读取，不需要独立 FFmpeg 程序。
+抽帧保留关键帧优先和定位回退，并处理显示旋转、镜像及像素宽高比。
+视频元数据写入仍依赖 FFmpeg 命令行，部分 HEIC 元数据写入仍可能依赖 ExifTool。
+「最终安装包只有主程序一个 EXE」尚未完成；元数据写入迁移和完整打包验证另行处理。
 本轮只验证 Windows CPU，macOS/Linux 及 GPU 尚未实机验证。`build_mac.sh` 仍属于下面的旧版打包流程，尚未适配当前分支。
 
-FFmpeg and some HEIC metadata operations still need external tools. The final
-single-EXE distribution is pending media migration and full packaging checks.
+Video metadata reading and frame extraction now use PyAV in-process, with
+keyframe-first sampling, seek fallback and display orientation/aspect-ratio
+handling. Video metadata writes and some HEIC operations still need external
+tools. The final single-EXE distribution is pending metadata migration and full
+packaging checks. HDR tone mapping and real phone-video compatibility have not
+been validated.
 Only Windows CPU has been tested; the existing macOS build script is still for
 the legacy release and has not been adapted to this branch.
 

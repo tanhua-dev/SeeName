@@ -11,6 +11,9 @@ JamePeng/llama-cpp-python 的 `ce261d12b5810fb4c6e695efc85d5e8cf23f0630`，
 安装分发中的 MIT 许可证见 `licenses/LICENSE-llama-cpp-python.txt`。
 模型使用本地 Qwen3-VL-4B-Instruct GGUF 主模型及 mmproj 视觉投影文件。
 完整新安装包尚未构建，原生依赖的分发清单需在打包阶段核对。
+视频读取使用 PyAV 19.0.1，在进程内调用其 FFmpeg 动态库；PyAV 分发许可见
+`licenses/LICENSE-PyAV.txt`。视频元数据写入目前仍使用 FFmpeg 命令行。
+PyAV 自身许可不能替代其所链接 FFmpeg 及其他原生库的分发要求，具体构建清单在打包阶段核对。
 以下 Ollama 运行时与发布包大小、构建信息描述的是既有旧版发行包。
 
 The current development branch uses llama-cpp-python / llama.cpp in-process.
@@ -18,6 +21,11 @@ The binding revision is pinned in `requirements-inference.txt`; its distributed
 MIT license is included in `licenses/LICENSE-llama-cpp-python.txt`. Full-package
 native dependency inventory is pending. Ollama release details below describe
 the legacy distribution.
+
+Video reading uses PyAV and its native FFmpeg libraries in-process. PyAV's
+distributed license is included in `licenses/LICENSE-PyAV.txt`; linked native
+libraries require their own packaging inventory. Video metadata writing still
+uses the FFmpeg CLI.
 
 ---
 

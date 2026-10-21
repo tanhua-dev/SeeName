@@ -27,14 +27,9 @@ from core.defaults import (
     PRESETS,
 )
 from core.media import (
-    JPG_SOI,
-    JPG_EOI,
     CRE,
     find_ffmpeg,
     FF,
-    ffmpeg_sync_args,
-    run_ff,
-    split_jpegs,
     probe,
     extract_keyframes,
     extract_seek,
