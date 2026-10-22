@@ -1,4 +1,6 @@
-"""Media discovery, metadata reading and image preparation using FFmpeg/Pillow.
+"""Media discovery and image preparation using PyAV/Pillow.
+
+FFmpeg CLI lookup is retained only for metadata writing, which has not migrated.
 
 Keep the existing Ollama tuning until measurements justify changing it:
 the previous qwen3-vl setup used a roughly 1M-pixel grid and num_ctx=2048
@@ -11,7 +13,6 @@ from __future__ import annotations
 import io
 import math
 import os
-import re
 import shutil
 import subprocess
 import time
@@ -34,16 +35,14 @@ from .paths import (
     IS_WIN,
     RUNTIME_DIR,
 )
+from .video import probe, extract_keyframes, extract_seek
+
 from .timestamps import (
     dt_from_name,
     parse_dt,
 )
 
 
-_DUR = re.compile(r'Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)')
-_CT = re.compile(r'creation_time\s*:\s*([0-9T:\-\.Z\+ ]+)', re.I)
-_LOC = re.compile(r'^\s*location(?:-eng)?\s*:\s*([+\-][0-9.]+[+\-][0-9.]+)', re.M)
-JPG_SOI, JPG_EOI = b'\xff\xd8\xff', b'\xff\xd9'
 CRE = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 
@@ -69,104 +68,6 @@ def FF() -> str:
     if _FF_CACHE is None:
         _FF_CACHE = find_ffmpeg()
     return _FF_CACHE
-_FF_NEW_SYNC: bool | None = None
-
-
-def ffmpeg_sync_args() -> list:
-    """关键帧抽取时的「按原时间戳输出」参数。
-
-    ffmpeg 7.1 起 `-vsync` 被标记为废弃，8.x master 构建已彻底移除（写了就
-    "Unrecognized option"、整条命令直接失败、image2pipe 输出 0 字节）。
-    新版用 `-fps_mode passthrough`，语义与旧 `-vsync 0` 一致。
-    这里做一次能力探测：新 ffmpeg 用 -fps_mode，老 ffmpeg 回退 -vsync 0。
-    """
-    global _FF_NEW_SYNC
-    if _FF_NEW_SYNC is None:
-        _FF_NEW_SYNC = False
-        try:
-            r = subprocess.run(
-                [FF(), '-hide_banner', '-loglevel', 'quiet',
-                 '-f', 'lavfi', '-i', 'nullsrc=s=16x16:d=0.1',
-                 '-fps_mode', 'passthrough', '-frames:v', '1',
-                 '-f', 'null', '-'],
-                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                creationflags=CRE, timeout=30)
-            _FF_NEW_SYNC = (r.returncode == 0)
-        except Exception:
-            _FF_NEW_SYNC = False
-    return ['-fps_mode', 'passthrough'] if _FF_NEW_SYNC else ['-vsync', '0']
-
-
-def run_ff(args, want_stdout=False):
-    return subprocess.run(
-        args,
-        stdout=subprocess.PIPE if want_stdout else subprocess.DEVNULL,
-        stderr=subprocess.PIPE, creationflags=CRE)
-
-
-def split_jpegs(buf: bytes) -> list[bytes]:
-    out, i = [], 0
-    while True:
-        a = buf.find(JPG_SOI, i)
-        if a < 0:
-            break
-        b = buf.find(JPG_EOI, a)
-        if b < 0:
-            break
-        out.append(buf[a:b + 2])
-        i = b + 2
-    return out
-
-
-def probe(path: str) -> dict:
-    """一次 ffmpeg -i 同时拿到创建时间、时长、GPS。"""
-    s = run_ff([FF(), '-hide_banner', '-i', path]).stderr.decode('utf-8', 'ignore')
-    dur = 0.0
-    m = _DUR.search(s)
-    if m:
-        h, mi, sec = m.groups()
-        dur = int(h) * 3600 + int(mi) * 60 + float(sec)
-    ct = None
-    m = _CT.search(s)
-    if m:
-        ct = m.group(1).strip()
-    gps = None
-    m = _LOC.search(s)
-    if m:
-        parts = re.findall(r'[+\-][0-9.]+', m.group(1))
-        if len(parts) == 2:
-            lat, lon = float(parts[0]), float(parts[1])
-            if abs(lat) > 0.01 or abs(lon) > 0.01:
-                gps = (lat, lon)
-    return {'dur': dur, 'creation': ct, 'gps': gps}
-
-
-def extract_keyframes(path, count, width, dur):
-    """只解关键帧（快），按时间均匀取 count 张；不足时 fps 会补重复帧，由调用方去重。"""
-    vf = ("select='eq(pict_type,I)',scale='min(%d,iw)':-2,fps=%d/%.3f"
-          % (width, count, max(0.1, dur)))
-    r = subprocess.run(
-        [FF(), '-hide_banner', '-loglevel', 'error', '-skip_frame', 'nokey',
-         '-i', path] + ffmpeg_sync_args() +
-        ['-vf', vf, '-frames:v', str(count),
-         '-q:v', '3', '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1'],
-        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=CRE)
-    return split_jpegs(r.stdout)
-
-
-def extract_seek(path, positions, width):
-    """逐点定位抽帧（时长无关，约 0.6s/帧）。"""
-    out = []
-    for sec in positions:
-        r = subprocess.run(
-            [FF(), '-hide_banner', '-loglevel', 'error', '-ss', '%.3f' % max(0.0, sec),
-             '-i', path, '-frames:v', '1', '-vf', "scale='min(%d,iw)':-2" % width,
-             '-q:v', '3', '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1'],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=CRE)
-        j = split_jpegs(r.stdout)
-        if j:
-            out.append(j[0])
-    return out
 
 
 def score_frame(data: bytes) -> float:
@@ -344,7 +245,7 @@ def _photo_exif(path: str):
 def find_no_time(directory: str, files: list) -> list:
     """找出「读不到拍摄时间」的视频。
 
-    只对文件名里没时间的少数文件做 ffprobe，所以很快。
+    只对文件名里没时间的少数文件读取容器信息，不启动外部程序。
     """
     out = []
     for fn in files:

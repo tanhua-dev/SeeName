@@ -7,7 +7,7 @@ from datetime import datetime
 
 
 def parse_dt(creation: str):
-    """解析 ffprobe 的 creation_time，返回本地时间 datetime 或 None。"""
+    """解析媒体的拍摄时间标签，返回本地时间 datetime 或 None。"""
     if not creation:
         return None
     try:

@@ -1,5 +1,7 @@
 # SeeName user guide
 
+Video probing and frame extraction use PyAV in-process and need no FFmpeg executable. Writing video file metadata still requires the FFmpeg CLI; that operation has not migrated yet.
+
 > In one line: it turns folders of unreadable names like `VID_20251011_143032.mp4` or `IMG_8932.jpg` into names you can actually read — **date taken + place + what is in the picture**.
 
 ## 1. What it does

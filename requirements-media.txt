@@ -1,0 +1,2 @@
+# Same native PyAV build version validated in the seename environment.
+av==19.0.1
