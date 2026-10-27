@@ -1,0 +1,123 @@
+name: Windows build and release
+
+on:
+  push:
+    branches:
+      - "codex/**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Resolve build version
+        id: meta
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $version = $env:GITHUB_REF_NAME
+            if ($version -notmatch '^v\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$') {
+              throw "Release tag must look like v1.2.3: $version"
+            }
+          } else {
+            $version = "v0.0.0-preview.$env:GITHUB_RUN_NUMBER"
+          }
+          $componentVersion = $version.ToLowerInvariant() -replace '[^a-z0-9_-]', '-'
+          $publishRelease = $env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REPOSITORY -eq 'tanhua-dev/SeeName'
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "component_version=$componentVersion" >> $env:GITHUB_OUTPUT
+          "publish_release=$($publishRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $version = '1.4.321.0'
+          $installer = Join-Path $env:RUNNER_TEMP "vulkansdk-windows-X64-$version.exe"
+          $uri = "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe"
+          Invoke-WebRequest -Uri $uri -OutFile $installer
+          & $installer --accept-licenses --default-answer --confirm-command install
+          if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK installation failed: $LASTEXITCODE" }
+          $sdk = "C:\VulkanSDK\$version"
+          if (-not (Test-Path (Join-Path $sdk 'Bin\glslc.exe'))) { throw 'Vulkan SDK glslc.exe was not installed.' }
+          "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+
+      - name: Install pinned build dependencies
+        shell: pwsh
+        env:
+          CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF
+        run: python -m pip install -r requirements-windows-build.txt
+
+      - name: Build Vulkan component and matching source bundle
+        shell: pwsh
+        env:
+          COMPONENT_VERSION: ${{ steps.meta.outputs.component_version }}
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+          PUBLISH_RELEASE: ${{ steps.meta.outputs.publish_release }}
+        run: |
+          $buildArgs = @('--vulkan-sdk', $env:VULKAN_SDK, '--version', $env:COMPONENT_VERSION)
+          if ($env:PUBLISH_RELEASE -eq 'true') {
+            $baseUrl = "https://github.com/tanhua-dev/SeeName/releases/download/$env:RELEASE_VERSION"
+            $buildArgs += @('--download-base-url', $baseUrl)
+          }
+          python -B scripts/build_vulkan.py @buildArgs
+
+      - name: Build and verify the SeeName application
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          $catalog = Get-ChildItem dist\backends -Filter '*.catalog.json' | Select-Object -First 1
+          if (-not $catalog) { throw 'The Vulkan build did not produce a catalog.' }
+          python -B scripts/build_windows.py --version $env:RELEASE_VERSION --vulkan-catalog $catalog.FullName
+
+      - name: Upload preview or release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: SeeName-${{ steps.meta.outputs.version }}-${{ github.run_id }}
+          path: |
+            dist/backends/*
+            dist/windows/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: github.ref_type == 'tag' && github.repository == 'tanhua-dev/SeeName'
+    needs: build
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: SeeName-${{ needs.build.outputs.version }}-${{ github.run_id }}
+          path: release-assets
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $files = @(Get-ChildItem release-assets -File -Recurse | ForEach-Object { $_.FullName })
+          if ($files.Count -lt 6) { throw "Expected application, Vulkan, source, checksum and catalog assets; found $($files.Count)." }
+          gh release create $env:RELEASE_VERSION @files --verify-tag --title "SeeName $env:RELEASE_VERSION" --generate-notes

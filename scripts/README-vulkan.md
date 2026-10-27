@@ -11,6 +11,44 @@ macOS/Linux artifacts are not provided by this build script.
 
 ## Build and release
 
+The GitHub Actions workflow `.github/workflows/windows-release.yml` builds the
+Vulkan component, its matching source bundle and the SeeName application on a
+Windows x64 runner. Pushes to `codex/**` branches and manual runs upload a
+14-day Actions artifact only; they do not create a Release. Manual dispatch is
+available after the workflow is on the repository's default branch. On a
+machine with a supported GPU, download and extract the artifact, then test the packaged
+component without publishing it:
+
+```powershell
+# Run from the extracted artifact root. First extract the app archive and then
+# unzip the Vulkan component ZIP under this user-data root.
+$appZip = Get-ChildItem .\windows\*-windows-x64-cpu.zip | Select-Object -First 1
+Expand-Archive $appZip.FullName .\app
+$catalog = Get-Content .\backends\*.catalog.json -Raw | ConvertFrom-Json
+$component = $catalog.'windows-x64'
+$backendRoot = Join-Path $env:LOCALAPPDATA 'SeeName\backends'
+$componentDir = Join-Path $backendRoot $component.id
+New-Item -ItemType Directory -Force $componentDir | Out-Null
+Expand-Archive (Join-Path .\backends ($component.id + '.zip')) $componentDir
+.\app\SeeName\SeeName.exe --package-check .\vulkan-check.json `
+  --check-vulkan-directory $backendRoot --check-model-directory <model-directory>
+```
+
+The check validates the component against the packaged llama.cpp runtime,
+initializes the Vulkan device and, when a model directory is supplied, runs an
+image inference and records the actual device. This requires a real compatible
+GPU and driver; hosted runners build and package the backend but do not provide
+GPU hardware. The preview catalog has no download URL, so the GUI download
+button remains disabled. This lets you test the downloaded component and
+inference before any Release exists; testing the GUI's HTTPS download itself
+requires a public test URL, such as a GitHub prerelease asset.
+
+Pushing a semantic version tag such as `v1.2.3` to `tanhua-dev/SeeName` runs the
+same build, packages the application with the generated release catalog, then
+publishes the application archive, Vulkan binary and source archives, checksums
+and catalog to one GitHub Release. Tags pushed to forks still build and upload
+an Actions artifact, but never publish a Release.
+
 Use the same Python 3.12 environment and exact CPU binding used for the base
 Windows build (`requirements-windows-build.txt`). Install VS 2022 C++ tools,
 CMake and a Vulkan SDK including glslc and SPIRV-Headers on the build machine.
