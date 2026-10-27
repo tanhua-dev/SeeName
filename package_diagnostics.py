@@ -41,15 +41,23 @@ def _native_modules() -> list[str]:
 
 
 def run_package_check(result_path: str, model_directory: str = '', vulkan_directory: str = '') -> int:
+    result = Path(result_path).resolve()
+    result.parent.mkdir(parents=True, exist_ok=True)
+    report = dict(success=False, stage='starting', frozen=bool(getattr(sys, 'frozen', False)),
+                  version=getattr(sys, '_seename_version', ''),
+                  metadata_writing_enabled=None)
+
+    def checkpoint(stage):
+        report['stage'] = stage
+        result.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    checkpoint('importing application modules')
     import engine
     from core import settings
     from core.features import metadata_writing_enabled
 
-    result = Path(result_path).resolve()
-    result.parent.mkdir(parents=True, exist_ok=True)
-    report = dict(success=False, frozen=bool(getattr(sys, 'frozen', False)),
-                  version=getattr(sys, '_seename_version', ''),
-                  metadata_writing_enabled=metadata_writing_enabled())
+    report['metadata_writing_enabled'] = metadata_writing_enabled()
+    checkpoint('checking build capabilities')
     old_config = settings._CFG
     old_vulkan_root = engine.vulkan_component.root
     old_save, old_settings_save = engine.save_config, settings.save_config
@@ -87,6 +95,7 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
                 from ui.common import asset_path
                 import tkinter as tk
 
+                checkpoint('checking bundled resources and video fixture')
                 if not engine.load_districts() or not engine.load_world():
                     raise AssertionError('Bundled place databases are missing')
                 for name in ('logo.png', 'logo_head.png', 'logo_round.png'):
@@ -115,6 +124,7 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
                 frames = engine.extract_seek(str(source), [0, .5, 1.5], 160)
                 if len(frames) != 3 or info['gps'] != (30.65, 104.06):
                     raise AssertionError('Frozen PyAV probing/extraction failed')
+                checkpoint('checking local inference library and Vulkan discovery')
                 ok, message = meta.write_meta(str(source), 'title', 'description', 'keywords')
                 if ok or hashlib.sha256(source.read_bytes()).hexdigest() != digest:
                     raise AssertionError('The build allowed a metadata write')
@@ -134,6 +144,7 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
                 llama_cpp.llama_context_default_params()
                 report['native_inference_library'] = True
 
+                checkpoint('creating hidden Tk interface')
                 root = tk.Tk()
                 root.withdraw()
                 callback_errors = []
@@ -145,6 +156,7 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
                 report['gui'] = True
                 root.destroy()
                 root = None
+                checkpoint('checking native module inventory')
 
                 if model_directory:
                     available = engine.installed_models()
@@ -161,6 +173,7 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
                     report['model_inference'] = dict(text=text, seconds=seconds, device=engine.runtime_status()['device'])
                 report['native_modules'] = _native_modules()
                 report['success'] = True
+                report['stage'] = 'complete'
         finally:
             subprocess.Popen, socket.socket.connect = old_popen, old_connect
     except Exception:
