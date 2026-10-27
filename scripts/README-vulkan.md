@@ -41,13 +41,24 @@ GPU and driver; hosted runners build and package the backend but do not provide
 GPU hardware. The preview catalog has no download URL, so the GUI download
 button remains disabled. This lets you test the downloaded component and
 inference before any Release exists; testing the GUI's HTTPS download itself
-requires a public test URL, such as a GitHub prerelease asset.
+requires a public HTTPS asset. To exercise the complete GUI download path
+before the final upstream release, push a semantic prerelease tag such as
+`v1.2.3-rc.1` to your fork. The workflow publishes a GitHub prerelease on that
+fork, builds the matching application with a catalog pointing to the fork's
+prerelease assets, and uploads both that app and the assets as the Actions
+artifact. Install the preview app, open Model manager → GPU acceleration, and
+download the Vulkan component there. Verify the HTTPS transfer, SHA-256 checks,
+installation status, restart, and inference on a machine with a supported GPU.
+The test prerelease is public on your fork, but does not create a Release in the
+upstream repository. Delete it after testing if you no longer need it.
 
-Pushing a semantic version tag such as `v1.2.3` to `tanhua-dev/SeeName` runs the
-same build, packages the application with the generated release catalog, then
-publishes the application archive, Vulkan binary and source archives, checksums
-and catalog to one GitHub Release. Tags pushed to forks still build and upload
-an Actions artifact, but never publish a Release.
+Pushing a stable semantic version tag such as `v1.2.3` to `tanhua-dev/SeeName`
+runs the same build, packages the application with the generated release
+catalog, then publishes the application archive, Vulkan binary and source
+archives, checksums and catalog to one GitHub Release. Stable tags pushed to
+forks only build and upload an Actions artifact; prerelease tags (with a `-`
+suffix) publish a prerelease on that fork so the online downloader can be tested
+against it.
 
 Use the same Python 3.12 environment and exact CPU binding used for the base
 Windows build (`requirements-windows-build.txt`). Install VS 2022 C++ tools,
