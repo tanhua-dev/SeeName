@@ -60,6 +60,10 @@ jobs:
           if (-not (Test-Path (Join-Path $sdk 'Bin\glslc.exe'))) { throw 'Vulkan SDK glslc.exe was not installed.' }
           "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
 
+      - name: Enable long Git paths for llama.cpp submodule
+        shell: pwsh
+        run: git config --global core.longpaths true
+
       - name: Install pinned build dependencies
         shell: pwsh
         env:
