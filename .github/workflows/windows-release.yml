@@ -63,6 +63,11 @@ jobs:
           if (-not (Test-Path (Join-Path $sdk 'Bin\glslc.exe'))) { throw 'Vulkan SDK glslc.exe was not installed.' }
           "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
 
+      - name: Install CUDA Toolkit 12.4 for the optional CUDA backend
+        uses: Jimver/cuda-toolkit@v0.2.36
+        with:
+          cuda: '12.4.1'
+
       - name: Enable long Git paths for llama.cpp submodule
         shell: pwsh
         run: git config --global core.longpaths true
@@ -87,14 +92,29 @@ jobs:
           }
           python -B scripts/build_vulkan.py @buildArgs
 
+      - name: Build CUDA component and matching source bundle
+        shell: pwsh
+        env:
+          COMPONENT_VERSION: ${{ steps.meta.outputs.component_version }}
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+          PUBLISH_RELEASE: ${{ steps.meta.outputs.publish_release }}
+        run: |
+          $buildArgs = @('--version', $env:COMPONENT_VERSION)
+          if ($env:PUBLISH_RELEASE -eq 'true') {
+            $baseUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_VERSION"
+            $buildArgs += @('--download-base-url', $baseUrl)
+          }
+          python -B scripts/build_cuda.py @buildArgs
+
       - name: Build and verify the SeeName application
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          $catalog = Get-ChildItem dist\backends -Filter '*.catalog.json' | Select-Object -First 1
-          if (-not $catalog) { throw 'The Vulkan build did not produce a catalog.' }
-          python -B scripts/build_windows.py --version $env:RELEASE_VERSION --vulkan-catalog $catalog.FullName
+          $vulkanCatalog = Get-ChildItem dist\backends -Filter 'vulkan-*.catalog.json' | Select-Object -First 1
+          $cudaCatalog = Get-ChildItem dist\backends -Filter 'cuda-*.catalog.json' | Select-Object -First 1
+          if (-not $vulkanCatalog -or -not $cudaCatalog) { throw 'The Vulkan or CUDA build did not produce a catalog.' }
+          python -B scripts/build_windows.py --version $env:RELEASE_VERSION --vulkan-catalog $vulkanCatalog.FullName --cuda-catalog $cudaCatalog.FullName
 
       - name: Upload preview or release artifacts
         uses: actions/upload-artifact@v7
@@ -132,6 +152,9 @@ jobs:
         run: |
           $files = @(Get-ChildItem release-assets -File -Recurse | ForEach-Object { $_.FullName })
           if ($files.Count -lt 6) { throw "Expected application, Vulkan, source, checksum and catalog assets; found $($files.Count)." }
+          foreach ($pattern in @('SeeName-*-windows-x64-cpu.zip', 'vulkan-*.zip', 'vulkan-*.catalog.json', 'vulkan-*-source.zip', 'cuda-*.zip', 'cuda-*.catalog.json', 'cuda-*-source.zip')) {
+            if (-not (Get-ChildItem release-assets -File -Recurse -Filter $pattern)) { throw "Missing required release asset matching $pattern." }
+          }
           $isPrerelease = $env:RELEASE_VERSION -match '^v\d+\.\d+\.\d+-'
           if ($isPrerelease) {
             gh release create $env:RELEASE_VERSION @files --verify-tag --title "SeeName $env:RELEASE_VERSION" --generate-notes --prerelease

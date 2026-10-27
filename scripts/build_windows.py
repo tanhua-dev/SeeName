@@ -125,6 +125,7 @@ def main():
     parser.add_argument('--work-root', type=Path, default=ROOT/'build'/'windows')
     parser.add_argument('--verify-model-directory', default='')
     parser.add_argument('--vulkan-catalog', type=Path, help='Trusted Vulkan component catalog to bundle')
+    parser.add_argument('--cuda-catalog', type=Path, help='Trusted CUDA component catalog to bundle')
     args = parser.parse_args()
     if not re.fullmatch(r'v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?', args.version):
         parser.error('Version must look like v1.2.3 or v1.2.3-rc.1.')
@@ -145,6 +146,10 @@ def main():
         from inference.vulkan import VulkanComponent
         VulkanComponent(lambda: {}, lambda **kw: None, catalog=args.vulkan_catalog)._entry()
         shutil.copy2(args.vulkan_catalog, work/'vulkan-catalog.json')
+    if args.cuda_catalog:
+        from inference.cuda import CudaComponent
+        CudaComponent(lambda: {}, lambda **kw: None, catalog=args.cuda_catalog)._entry()
+        shutil.copy2(args.cuda_catalog, work/'cuda-catalog.json')
     print('Build work directory:', work, flush=True)
     hook = work/'runtime_profile.py'
     hook.write_text('import sys\nsys._seename_metadata_write_disabled = True\n'
@@ -156,6 +161,10 @@ def main():
         environment['SEENAME_VULKAN_CATALOG'] = str(work/'vulkan-catalog.json')
     else:
         environment.pop('SEENAME_VULKAN_CATALOG', None)
+    if args.cuda_catalog:
+        environment['SEENAME_CUDA_CATALOG'] = str(work/'cuda-catalog.json')
+    else:
+        environment.pop('SEENAME_CUDA_CATALOG', None)
     command = [sys.executable, '-B', '-m', 'PyInstaller', '--noconfirm', '--clean',
                '--distpath', str(work/'dist'), '--workpath', str(work/'analysis'),
                str(ROOT/'scripts'/'windows.spec')]

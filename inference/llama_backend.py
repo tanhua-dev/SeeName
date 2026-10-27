@@ -27,6 +27,7 @@ class LlamaBackend:
         self.store = store
         self.context_size = context_size
         self.accelerator = accelerator
+        self._accelerator_name = 'GPU'
         self._gpu_ready = False
         self._device = 'CPU'
         self._lock = store.lock
@@ -80,6 +81,8 @@ class LlamaBackend:
             raise TimeoutError(T('模型操作超时'))
         if not self._ready and not self.start():
             raise RuntimeError(self._error)
+        if self.accelerator and getattr(self.accelerator, 'active_name', ''):
+            self._accelerator_name = self.accelerator.active_name
         files = self.store.resolve(model)
         if self._llm is not None and files == self._files:
             return
@@ -100,7 +103,7 @@ class LlamaBackend:
                         n_threads_batch=threads, n_batch=512, seed=42,
                         offload_kqv=gpu, op_offload=gpu,
                         verbose=False, use_mmap=True)
-                    self._device = 'Vulkan' if gpu else 'CPU'
+                    self._device = self._accelerator_name if gpu else 'CPU'
                     break
                 except Exception as error:
                     if llm is not None:
@@ -111,7 +114,7 @@ class LlamaBackend:
                     if not gpu or self._closing.is_set() or time.monotonic() >= deadline:
                         raise
                     self._gpu_ready = False
-                    self.accelerator.error = 'Vulkan model initialization failed; using CPU: ' + str(error)
+                    self.accelerator.error = self._accelerator_name + ' model initialization failed; using CPU: ' + str(error)
             if self._closing.is_set() or time.monotonic() >= deadline:
                 raise TimeoutError(T('模型操作超时'))
             size = files.size_bytes
@@ -152,7 +155,7 @@ class LlamaBackend:
                     raise
                 self._release()
                 self._gpu_ready = False
-                self.accelerator.error = 'Vulkan inference failed; using CPU: ' + str(error)
+                self.accelerator.error = self._accelerator_name + ' inference failed; using CPU: ' + str(error)
             return self._describe(image, model=model, prompt=prompt,
                                   timeout=max(0, timeout - (time.monotonic() - started)), max_tokens=max_tokens)
 

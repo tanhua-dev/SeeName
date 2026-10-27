@@ -40,7 +40,8 @@ def _native_modules() -> list[str]:
     return sorted(set(paths))
 
 
-def run_package_check(result_path: str, model_directory: str = '', vulkan_directory: str = '') -> int:
+def run_package_check(result_path: str, model_directory: str = '', vulkan_directory: str = '',
+                      cuda_directory: str = '') -> int:
     result = Path(result_path).resolve()
     result.parent.mkdir(parents=True, exist_ok=True)
     report = dict(success=False, stage='starting', frozen=bool(getattr(sys, 'frozen', False)),
@@ -60,6 +61,7 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
     checkpoint('checking build capabilities')
     old_config = settings._CFG
     old_vulkan_root = engine.vulkan_component.root
+    old_cuda_root = engine.cuda_component.root
     old_save, old_settings_save = engine.save_config, settings.save_config
     root = None
     try:
@@ -79,9 +81,12 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
                 work = Path(temporary)
                 models = str(Path(model_directory).resolve()) if model_directory else str(work/'models')
                 cfg = dict(write_meta=True, write_txt=False, write_md=False, help_autoshow=False,
-                           model=engine.MODEL, gguf_models_dir=models, vulkan_enabled=bool(vulkan_directory))
+                           model=engine.MODEL, gguf_models_dir=models,
+                           vulkan_enabled=bool(vulkan_directory), cuda_enabled=bool(cuda_directory))
                 if vulkan_directory:
                     engine.vulkan_component.root = Path(vulkan_directory).resolve()
+                if cuda_directory:
+                    engine.cuda_component.root = Path(cuda_directory).resolve()
                 settings._CFG = cfg
                 engine.save_config = settings.save_config = lambda **kw: cfg.update(kw) or cfg
                 report['config_override_blocked'] = not engine.Config(str(work), write_meta=True).write_meta
@@ -134,12 +139,16 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
                 if not engine.start_server():
                     raise RuntimeError(engine.runtime_status()['error'])
                 import llama_cpp
-                if not vulkan_directory and llama_cpp.llama_supports_gpu_offload():
+                if not vulkan_directory and not cuda_directory and llama_cpp.llama_supports_gpu_offload():
                     raise RuntimeError('The CPU build must use a CPU-only inference binding')
                 if vulkan_directory:
                     if not engine.vulkan_component.devices or engine.vulkan_component.error:
                         raise RuntimeError('Vulkan package check failed: ' + engine.vulkan_component.error)
                     report['vulkan_devices'] = engine.vulkan_component.devices
+                if cuda_directory:
+                    if not engine.cuda_component.devices or engine.cuda_component.error:
+                        raise RuntimeError('CUDA package check failed: ' + engine.cuda_component.error)
+                    report['cuda_devices'] = engine.cuda_component.devices
                 llama_cpp.llama_model_default_params()
                 llama_cpp.llama_context_default_params()
                 report['native_inference_library'] = True
@@ -184,6 +193,7 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
             root.destroy()
         settings._CFG = old_config
         engine.vulkan_component.root = old_vulkan_root
+        engine.cuda_component.root = old_cuda_root
         engine.save_config, settings.save_config = old_save, old_settings_save
         result.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     return 0 if report['success'] else 1

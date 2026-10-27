@@ -15,7 +15,7 @@ RECIPE_FILES = (
     'scripts/build_vulkan.py', 'scripts/package_vulkan_source.py',
     'scripts/build_windows.py', 'scripts/README-vulkan.md',
     '.github/workflows/windows-release.yml',
-    'inference/vulkan.py', 'inference/downloads.py',
+    'inference/vulkan.py', 'inference/backend_component.py', 'inference/downloads.py',
     'inference/interfaces.py', 'inference/__init__.py',
     'requirements-inference.txt', 'requirements-media.txt',
     'requirements-windows-build.txt', 'LICENSE',

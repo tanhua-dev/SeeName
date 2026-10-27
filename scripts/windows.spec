@@ -31,6 +31,7 @@ datas = [(str(root/'data'/'districts.csv'), 'data'),
 datas += [(str(root/name), '.') for name in ('help_zh.md', 'help_en.md', 'NOTICE.md', 'LICENSE')]
 datas += collect_data_files('llama_cpp', includes=['**/*.json', '**/*.jinja', '**/*.txt'])
 datas += [(os.environ.get('SEENAME_VULKAN_CATALOG', str(root/'inference'/'vulkan-catalog.json')), 'inference')]
+datas += [(os.environ.get('SEENAME_CUDA_CATALOG', str(root/'inference'/'cuda-catalog.json')), 'inference')]
 
 a = Analysis(
     [str(root/'main.py')], pathex=[str(root)],

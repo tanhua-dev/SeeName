@@ -40,10 +40,11 @@ def main():
         parser.add_argument('--package-check', required=True, metavar='RESULT_JSON')
         parser.add_argument('--check-model-directory', default='')
         parser.add_argument('--check-vulkan-directory', default='')
+        parser.add_argument('--check-cuda-directory', default='')
         args = parser.parse_args()
         from package_diagnostics import run_package_check
         raise SystemExit(run_package_check(args.package_check, args.check_model_directory,
-                                           args.check_vulkan_directory))
+                                           args.check_vulkan_directory, args.check_cuda_directory))
     import tkinter as tk
     import engine
     from ui.app import App
