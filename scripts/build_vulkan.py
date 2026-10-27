@@ -25,8 +25,10 @@ from scripts.package_vulkan_source import SOURCE_SHA256, package_source, toolcha
 
 
 def audit_plugin(plugin):
-    candidates = list(Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')).glob(
-        'Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe'))
+    roots = [Path(os.environ.get('ProgramFiles(x86)', r'C:\\Program Files (x86)')) ,
+             Path(os.environ.get('ProgramFiles', r'C:\\Program Files'))]
+    candidates = [candidate for root in roots for candidate in root.glob(
+        'Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe')]
     tool = shutil.which('dumpbin') or (str(sorted(candidates)[-1]) if candidates else '')
     if not tool:
         raise RuntimeError('dumpbin is required to audit the component dependencies')
