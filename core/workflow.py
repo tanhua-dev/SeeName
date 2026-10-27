@@ -10,6 +10,7 @@ import traceback
 from collections.abc import Callable
 from inference import InferenceBackend
 from strings import T
+from .features import metadata_writing_enabled
 from .defaults import (
     ALREADY_NAMED,
     CTX,
@@ -88,7 +89,7 @@ class Config:
         self.amap_key = amap_key or ''
         self.geo_level = 'street' if geo_level == 'street' else 'district'
         # —— 描述落盘（默认全开：元数据 / .ai.txt / 目录说明.md）
-        self.write_meta = bool(write_meta)
+        self.write_meta = bool(write_meta) and metadata_writing_enabled()
         self.write_txt = bool(write_txt)
         self.write_md = bool(write_md)
         # 以下两个参数已停用（相邻借鉴功能已下线），保留仅为兼容旧调用

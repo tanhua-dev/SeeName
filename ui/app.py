@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox, ttk
 import engine
 import strings
 from strings import T
+from core.features import metadata_writing_enabled
 from . import theme
 from .common import APP_AUTHOR, APP_SUB, APP_TITLE, APP_VER, asset_path, cut, fmt_dur, open_path
 from .widgets import Hover, Tip
@@ -617,11 +618,13 @@ class App:
 
         # ⑦ 描述落盘（三个独立开关，默认全开）
         ttk.Separator(body, orient='horizontal').pack(fill='x', pady=(2, 8))
-        self.var_meta = tk.BooleanVar(value=self._sw('write_meta', True))
-        ttk.Checkbutton(body, text=T('写入文件元数据'),
-                        variable=self.var_meta,
-                        command=lambda: self._save_sw('write_meta', self.var_meta)
-                        ).pack(fill='x', anchor='w')
+        self.var_meta = tk.BooleanVar(value=metadata_writing_enabled() and self._sw('write_meta', True))
+        self.cb_meta = ttk.Checkbutton(body, text=T('写入文件元数据'),
+                                       variable=self.var_meta,
+                                       command=lambda: self._save_sw('write_meta', self.var_meta))
+        if not metadata_writing_enabled():
+            self.cb_meta.state(['disabled'])
+        self.cb_meta.pack(fill='x', anchor='w')
         self.var_txt = tk.BooleanVar(value=self._sw('write_txt', True))
         ttk.Checkbutton(body, text=T('生成 .ai.txt 摘要'),
                         variable=self.var_txt,
@@ -661,6 +664,9 @@ class App:
     # ------------------------------------------------------------ 新增开关的落盘
     def _save_sw(self, key, var):
         """布尔开关：勾选/取消都立刻写进 config.json（下次打开还是这个状态）。"""
+        if key == 'write_meta' and not metadata_writing_enabled():
+            var.set(False)
+            return
         try:
             engine.save_config(**{key: bool(var.get())})
         except Exception:

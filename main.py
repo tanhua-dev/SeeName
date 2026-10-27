@@ -33,13 +33,6 @@ import shutil
 import sys
 import threading
 import time
-import tkinter as tk
-
-import engine
-from ui.app import App
-from ui.platform import clean_stale_mei, enable_dpi
-
-
 def main():
     if '--package-check' in sys.argv:
         import argparse
@@ -51,6 +44,11 @@ def main():
         from package_diagnostics import run_package_check
         raise SystemExit(run_package_check(args.package_check, args.check_model_directory,
                                            args.check_vulkan_directory))
+    import tkinter as tk
+    import engine
+    from ui.app import App
+    from ui.platform import clean_stale_mei, enable_dpi
+
     enable_dpi()
     # 后台清扫上次运行遗留的 _MEI* 解压目录（onefile 退出时删不掉的垃圾）
     def _sweep():
