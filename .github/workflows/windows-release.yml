@@ -18,6 +18,9 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2022
+    permissions:
+      actions: write
+      contents: read
     outputs:
       version: ${{ steps.meta.outputs.version }}
       publish_release: ${{ steps.meta.outputs.publish_release }}
@@ -72,6 +75,18 @@ jobs:
         shell: pwsh
         run: git config --global core.longpaths true
 
+      - name: Install Ninja for CUDA build
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja --no-progress -y
+          }
+
+      - name: Cache CUDA compilation
+        uses: ggml-org/ccache-action@v1.2.24
+        with:
+          key: release-windows-2022-x64-cuda-12.4
+
       - name: Install pinned build dependencies
         shell: pwsh
         env:
@@ -93,18 +108,19 @@ jobs:
           python -B scripts/build_vulkan.py @buildArgs
 
       - name: Build CUDA component and matching source bundle
-        shell: pwsh
+        shell: cmd
         env:
           COMPONENT_VERSION: ${{ steps.meta.outputs.component_version }}
           RELEASE_VERSION: ${{ steps.meta.outputs.version }}
           PUBLISH_RELEASE: ${{ steps.meta.outputs.publish_release }}
         run: |
-          $buildArgs = @('--version', $env:COMPONENT_VERSION)
-          if ($env:PUBLISH_RELEASE -eq 'true') {
-            $baseUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_VERSION"
-            $buildArgs += @('--download-base-url', $baseUrl)
-          }
-          python -B scripts/build_cuda.py @buildArgs
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          if errorlevel 1 exit /b %errorlevel%
+          if "%PUBLISH_RELEASE%"=="true" (
+            python -B scripts/build_cuda.py --version "%COMPONENT_VERSION%" --download-base-url "https://github.com/%GITHUB_REPOSITORY%/releases/download/%RELEASE_VERSION%"
+          ) else (
+            python -B scripts/build_cuda.py --version "%COMPONENT_VERSION%"
+          )
 
       - name: Build and verify the SeeName application
         shell: pwsh

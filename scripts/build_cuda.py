@@ -35,14 +35,28 @@ def audit_dependencies(binary, packaged):
                       'setupapi.dll', 'cfgmgr32.dll', 'gdi32.dll', 'winmm.dll', 'rpcrt4.dll',
                       'combase.dll', 'secur32.dll', 'shlwapi.dll', 'psapi.dll', 'dbghelp.dll'}
     package_names = {Path(name).name.lower() for name in packaged}
-    for binary in binary:
-        output = subprocess.check_output([tool, '/dependents', str(binary)]).decode('utf-8', 'replace')
+    for path in binary:
+        output = subprocess.check_output([tool, '/dependents', str(path)]).decode('utf-8', 'replace')
         dependencies = re.findall(r'^\s+([\w.-]+\.dll)\s*$', output, re.M | re.I)
         unexpected = [name for name in dependencies
                       if name.lower() not in package_names and name.lower() not in allowed_system
-                      and not name.lower().startswith('api-ms-win-crt-')]
+                      and not name.lower().startswith(('api-ms-win-', 'ext-ms-win-'))]
         if unexpected:
-            raise RuntimeError(f'Unpackaged dependency in {binary.name}: '+repr(unexpected))
+            raise RuntimeError(f'Unpackaged dependency in {path.name}: '+repr(unexpected))
+
+
+def run_logged(command, log_path):
+    """Stream compiler output to Actions while retaining a complete local log."""
+    with Path(log_path).open('ab') as log:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   bufsize=0)
+        for line in iter(process.stdout.readline, b''):
+            log.write(line)
+            sys.stdout.buffer.write(line)
+            sys.stdout.buffer.flush()
+        code = process.wait()
+    if code:
+        raise subprocess.CalledProcessError(code, command)
 
 
 def main():
@@ -59,6 +73,7 @@ def main():
         parser.error('Use Windows x64 and a lowercase immutable version identifier.')
     if args.download_base_url and not args.download_base_url.startswith('https://'):
         parser.error('The download base URL must use HTTPS.')
+    print('Checking the pinned CPU runtime and CUDA toolkit...', flush=True)
     from scripts.build_windows import preflight
     preflight()
     cuda = Path(args.cuda_root).resolve() if args.cuda_root else None
@@ -77,6 +92,7 @@ def main():
         raise RuntimeError('Output exists; use a new immutable version or output directory.')
     work = args.work_root.resolve()/uuid.uuid4().hex
     work.mkdir(parents=True)
+    print('Downloading the CUDA 12.4 EULA and pinned llama.cpp source...', flush=True)
     eula = work/'LICENSE-NVIDIA-CUDA.pdf'
     with urlopen('https://docs.nvidia.com/cuda/archive/12.4.1/pdf/EULA.pdf', timeout=30) as response:
         if not response.url.startswith('https://'):
@@ -96,18 +112,23 @@ def main():
             if not (work/item.filename).resolve().is_relative_to(work):
                 raise ValueError('Invalid source archive path')
         zipped.extractall(work)
+    print('Configuring the ggml-cuda dynamic backend...', flush=True)
     source = work/root
     build = work/'native'
-    command = [args.cmake, '-S', str(source), '-B', str(build), '-G', 'Visual Studio 17 2022', '-A', 'x64',
+    command = [args.cmake, '-S', str(source), '-B', str(build), '-G', 'Ninja Multi-Config',
                '-DBUILD_SHARED_LIBS=ON', '-DGGML_BACKEND_DL=ON', '-DGGML_CUDA=ON',
                '-DGGML_NATIVE=OFF', '-DGGML_CPU=OFF', '-DGGML_OPENMP=OFF', '-DGGML_VULKAN=OFF',
                '-DLLAMA_BUILD_TESTS=OFF', '-DLLAMA_BUILD_TOOLS=OFF', '-DLLAMA_BUILD_EXAMPLES=OFF',
-               '-DLLAMA_BUILD_SERVER=OFF', '-DLLAMA_CURL=OFF', '-DCUDAToolkit_ROOT='+str(cuda)]
+               '-DLLAMA_BUILD_SERVER=OFF', '-DLLAMA_CURL=OFF', '-DCUDAToolkit_ROOT='+str(cuda),
+               '-DGGML_CUDA_CCCL_VERSION=v3.4.3']
+    if shutil.which('ccache'):
+        command.extend(('-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache',
+                        '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache'))
     log = work/'build.log'
-    with log.open('wb') as stream:
-        subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, check=True)
-        subprocess.run([args.cmake, '--build', str(build), '--config', 'Release', '--target', 'ggml-cuda', '--parallel', '4'],
-                       stdout=stream, stderr=subprocess.STDOUT, check=True)
+    run_logged(command, log)
+    print('Compiling ggml-cuda.dll (live compiler output follows)...', flush=True)
+    run_logged([args.cmake, '--build', str(build), '--config', 'Release', '--target', 'ggml-cuda',
+                '--parallel', str(max(1, (os.cpu_count() or 4)-1))], log)
     matches = list(build.rglob('ggml-cuda.dll'))
     if len(matches) != 1:
         raise RuntimeError('Expected one ggml-cuda.dll, found: '+repr(matches))
@@ -118,6 +139,7 @@ def main():
         shutil.copy2(runtime/name, package/name)
     shutil.copy2(source/'LICENSE', package/'LICENSE-llama.cpp.txt')
     shutil.copy2(eula, package/'LICENSE-NVIDIA-CUDA.pdf')
+    print('Auditing the CUDA DLL dependency closure...', flush=True)
     audit_dependencies([package/'ggml-cuda.dll', *(package/name for name in CUDA_RUNTIME_FILES)], package.iterdir())
     files = {p.name: dict(size=p.stat().st_size, sha256=digest(p)) for p in package.iterdir()}
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipped:

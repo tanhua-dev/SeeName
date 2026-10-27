@@ -15,12 +15,14 @@ the redistributable Toolkit components: <https://docs.nvidia.com/cuda/eula/>.
 
 ## Build
 
-Use Windows x64, Python 3.12, Visual Studio 2022 C++ tools, CMake, the pinned
+Use Windows x64, Python 3.12, Visual Studio 2022 C++ tools, CMake, Ninja, the pinned
 CPU binding requirements, and CUDA Toolkit 12.4. The builder fetches the exact
 llama.cpp source archive pinned to the installed binding, verifies its SHA-256,
 builds the dynamic backend, and packages only the backend, required runtime
 DLLs, and licenses. The source ZIP contains the complete upstream source
 archive and build recipe. It does not contain the toolkit or compiler.
+When available, `ccache` is used through CMake's compiler launcher. Compiler
+output is streamed to the terminal and retained in `build.log`.
 
 ```powershell
 $env:CMAKE_ARGS = '-DGGML_NATIVE=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF'
