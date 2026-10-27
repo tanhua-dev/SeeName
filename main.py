@@ -41,6 +41,16 @@ from ui.platform import clean_stale_mei, enable_dpi
 
 
 def main():
+    if '--package-check' in sys.argv:
+        import argparse
+        parser = argparse.ArgumentParser(description='Run frozen-package acceptance checks.')
+        parser.add_argument('--package-check', required=True, metavar='RESULT_JSON')
+        parser.add_argument('--check-model-directory', default='')
+        parser.add_argument('--check-vulkan-directory', default='')
+        args = parser.parse_args()
+        from package_diagnostics import run_package_check
+        raise SystemExit(run_package_check(args.package_check, args.check_model_directory,
+                                           args.check_vulkan_directory))
     enable_dpi()
     # 后台清扫上次运行遗留的 _MEI* 解压目录（onefile 退出时删不掉的垃圾）
     def _sweep():
