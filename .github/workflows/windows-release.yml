@@ -20,6 +20,7 @@ jobs:
     runs-on: windows-2022
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      publish_release: ${{ steps.meta.outputs.publish_release }}
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -43,12 +44,11 @@ jobs:
           }
           $componentVersion = $version.ToLowerInvariant() -replace '[^a-z0-9_-]', '-'
           $isTag = $env:GITHUB_REF_TYPE -eq 'tag'
-          $isPrerelease = $isTag -and $version.Contains('-')
+          $isPrerelease = $isTag -and ($version -match '^v\d+\.\d+\.\d+-')
           $publishRelease = $isTag -and ($env:GITHUB_REPOSITORY -eq 'tanhua-dev/SeeName' -or $isPrerelease)
           "version=$version" >> $env:GITHUB_OUTPUT
           "component_version=$componentVersion" >> $env:GITHUB_OUTPUT
           "publish_release=$($publishRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-          "prerelease=$($isPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
       - name: Install Vulkan SDK
         shell: pwsh
@@ -107,7 +107,7 @@ jobs:
           retention-days: 14
 
   publish:
-    if: github.ref_type == 'tag' && (github.repository == 'tanhua-dev/SeeName' || contains(github.ref_name, '-'))
+    if: needs.build.outputs.publish_release == 'true'
     needs: build
     runs-on: windows-2022
     permissions:
@@ -129,10 +129,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
-          IS_PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
           $files = @(Get-ChildItem release-assets -File -Recurse | ForEach-Object { $_.FullName })
           if ($files.Count -lt 6) { throw "Expected application, Vulkan, source, checksum and catalog assets; found $($files.Count)." }
-          $releaseOptions = @()
-          if ($env:IS_PRERELEASE -eq 'true') { $releaseOptions += '--prerelease' }
-          gh release create $env:RELEASE_VERSION @files --verify-tag --title "SeeName $env:RELEASE_VERSION" --generate-notes @releaseOptions
+          $isPrerelease = $env:RELEASE_VERSION -match '^v\d+\.\d+\.\d+-'
+          if ($isPrerelease) {
+            gh release create $env:RELEASE_VERSION @files --verify-tag --title "SeeName $env:RELEASE_VERSION" --generate-notes --prerelease
+          } else {
+            gh release create $env:RELEASE_VERSION @files --verify-tag --title "SeeName $env:RELEASE_VERSION" --generate-notes
+          }
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_VERSION" | ConvertFrom-Json
+          if ($release.prerelease -ne $isPrerelease) {
+            throw "Release prerelease flag is $($release.prerelease), expected $isPrerelease."
+          }
