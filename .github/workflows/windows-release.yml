@@ -45,15 +45,41 @@ jobs:
           } else {
             $version = "v0.0.0-preview.$env:GITHUB_RUN_NUMBER"
           }
-          $componentVersion = $version.ToLowerInvariant() -replace '[^a-z0-9_-]', '-'
           $isTag = $env:GITHUB_REF_TYPE -eq 'tag'
           $isPrerelease = $isTag -and ($version -match '^v\d+\.\d+\.\d+-')
           $publishRelease = $isTag -and ($env:GITHUB_REPOSITORY -eq 'tanhua-dev/SeeName' -or $isPrerelease)
           "version=$version" >> $env:GITHUB_OUTPUT
-          "component_version=$componentVersion" >> $env:GITHUB_OUTPUT
           "publish_release=$($publishRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
+      - name: Read pinned Vulkan and CUDA component versions
+        id: backend
+        shell: pwsh
+        run: |
+          $pins = Get-Content scripts/backend-versions.json -Raw | ConvertFrom-Json
+          if ($pins.schema -ne 1 -or -not $pins.vulkan -or -not $pins.cuda) { throw 'Invalid scripts/backend-versions.json' }
+          "vulkan_version=$($pins.vulkan)" >> $env:GITHUB_OUTPUT
+          "cuda_version=$($pins.cuda)" >> $env:GITHUB_OUTPUT
+
+      - name: Reuse published GPU components when pinned versions are available
+        id: resolve
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+          PUBLISH_RELEASE: ${{ steps.meta.outputs.publish_release }}
+          VULKAN_COMPONENT_VERSION: ${{ steps.backend.outputs.vulkan_version }}
+          CUDA_COMPONENT_VERSION: ${{ steps.backend.outputs.cuda_version }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $resolveArgs = @('--repository', $env:GITHUB_REPOSITORY, '--current-tag', $env:RELEASE_VERSION,
+            '--vulkan-version', $env:VULKAN_COMPONENT_VERSION, '--cuda-version', $env:CUDA_COMPONENT_VERSION,
+            '--output', 'dist/backends')
+          if ($env:PUBLISH_RELEASE -eq 'true') {
+            $resolveArgs += @('--download-base-url', "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_VERSION")
+          }
+          python -B scripts/resolve_backend_assets.py @resolveArgs
+
       - name: Install Vulkan SDK
+        if: steps.resolve.outputs.vulkan_reused != 'true'
         shell: pwsh
         run: |
           $version = '1.4.321.0'
@@ -67,6 +93,7 @@ jobs:
           "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
 
       - name: Install CUDA Toolkit 12.4 for the optional CUDA backend
+        if: steps.resolve.outputs.cuda_reused != 'true'
         uses: Jimver/cuda-toolkit@v0.2.36
         with:
           cuda: '12.4.1'
@@ -76,6 +103,7 @@ jobs:
         run: git config --global core.longpaths true
 
       - name: Install Ninja for CUDA build
+        if: steps.resolve.outputs.cuda_reused != 'true'
         shell: pwsh
         run: |
           if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
@@ -84,6 +112,7 @@ jobs:
 
       - name: Cache CUDA compilation
         uses: ggml-org/ccache-action@v1.2.24
+        if: steps.resolve.outputs.cuda_reused != 'true'
         with:
           key: release-windows-2022-x64-cuda-12.4
 
@@ -94,9 +123,10 @@ jobs:
         run: python -m pip install -r requirements-windows-build.txt
 
       - name: Build Vulkan component and matching source bundle
+        if: steps.resolve.outputs.vulkan_reused != 'true'
         shell: pwsh
         env:
-          COMPONENT_VERSION: ${{ steps.meta.outputs.component_version }}
+          COMPONENT_VERSION: ${{ steps.backend.outputs.vulkan_version }}
           RELEASE_VERSION: ${{ steps.meta.outputs.version }}
           PUBLISH_RELEASE: ${{ steps.meta.outputs.publish_release }}
         run: |
@@ -108,9 +138,10 @@ jobs:
           python -B scripts/build_vulkan.py @buildArgs
 
       - name: Build CUDA component and matching source bundle
+        if: steps.resolve.outputs.cuda_reused != 'true'
         shell: cmd
         env:
-          COMPONENT_VERSION: ${{ steps.meta.outputs.component_version }}
+          COMPONENT_VERSION: ${{ steps.backend.outputs.cuda_version }}
           RELEASE_VERSION: ${{ steps.meta.outputs.version }}
           PUBLISH_RELEASE: ${{ steps.meta.outputs.publish_release }}
         run: |

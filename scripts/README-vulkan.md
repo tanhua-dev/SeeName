@@ -92,10 +92,12 @@ For an already-built component, produce its source bundle without recompiling:
 python -B scripts/package_vulkan_source.py --source-archive <pinned-source.zip> --catalog dist/backends/<component>.catalog.json --build-directory <build-work>/native --vulkan-sdk C:\VulkanSDK\<version>
 ```
 
-Extract the source bundle and follow README-SOURCE.md to rebuild. A fresh CPU
-runtime build may have different DLL fingerprints, so build the matching base
-application and catalog together. Byte-identical binaries across toolchains are
-not promised. Source and binary filenames/checksums identify the release pair.
+Extract the source bundle and follow README-SOURCE.md to rebuild. Runtime DLL
+hashes are recorded for diagnostics, while compatibility is pinned to the
+binding/llama.cpp source commits and the `ggml-backend-dl-v1` ABI profile. This
+allows a component to be reused across app builds whose hosted compiler emits
+different bytes for the same runtime sources. Validate any changed ABI profile
+before publishing a component update.
 
 Before publication, audit DLL dependencies and test on a clean Windows machine.
 Test 4B/2B images, model switching, insufficient memory, invalid/missing drivers,
@@ -137,8 +139,14 @@ extracted file sizes/SHA-256. Installation uses a staging directory and is
 activated only after validation. Model/config directories are not modified.
 
 The catalog is trusted application data, not downloaded unsigned metadata.
-It pins the binding commit, llama.cpp commit and exact CPU-native DLL hashes.
-Changing the base runtime requires rebuilding the component/catalog. The loaded
+It pins the binding commit, llama.cpp commit and backend ABI profile; CPU DLL
+hashes are retained as build diagnostics. The app release workflow reuses the
+fixed component IDs in `scripts/backend-versions.json` when a prior Release
+contains them. A normal app tag therefore copies and verifies those assets
+instead of rebuilding Vulkan/CUDA. Change a pin deliberately to publish a new
+component build; old verified installs remain side by side and can be selected
+in the GPU dialog. If a pinned asset is not present in the repository's releases,
+the workflow builds it once and attaches it to the current release. The loaded
 CPU DLLs are not overwritten; the plugin is registered through the existing
 binding's `ggml_backend_load` interface. Selecting CPU releases the model and
 disables GPU layer, KV and operation offload, and the vision projector uses CPU.

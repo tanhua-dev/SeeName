@@ -48,7 +48,7 @@ def main():
     import tkinter as tk
     import engine
     from ui.app import App
-    from ui.platform import clean_stale_mei, enable_dpi
+    from ui.platform import clean_stale_mei, enable_dpi, is_temporary_mei
 
     enable_dpi()
     # 后台清扫上次运行遗留的 _MEI* 解压目录（onefile 退出时删不掉的垃圾）
@@ -86,11 +86,11 @@ def main():
             if _t is threading.main_thread():
                 continue
             _t.join(timeout=max(0.1, min(2.0, 4.0 - (time.time() - _t0))))
-        # 3) 主动清掉本次解压目录里未被占用的文件（被映射的 DLL 删不掉没关系）
+        # 3) onefile 模式的临时 _MEI 目录可清理；onedir 的 _internal 必须保留
         _mei = getattr(sys, '_MEIPASS', '')
-        if _mei:
+        if _mei and is_temporary_mei(_mei):
             shutil.rmtree(_mei, ignore_errors=True)
-        # 4) 直接终止进程，不再回到引导器的删目录代码 —— 那段代码遇到还
+        # 4) 直接终止进程，不再回到 onefile 引导器的删目录代码 —— 那段代码遇到还
         #    被占用的 VCRUNTIME140.dll 时会弹「Failed to remove temporary
         #    directory」警告框（就是那个反复出现的弹窗）。残留交给下次
         #    启动时的 clean_stale_mei 清扫。

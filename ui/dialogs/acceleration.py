@@ -21,7 +21,7 @@ class AccelerationDialog(tk.Toplevel):
         self.backend = 'Vulkan'
         self._wait_job = None
         self.title(T('GPU 加速'))
-        self.geometry('650x360')
+        self.geometry('740x460')
         self.configure(bg=theme.C_BG)
         self.transient(master)
         self.protocol('WM_DELETE_WINDOW', self.on_close)
@@ -29,42 +29,91 @@ class AccelerationDialog(tk.Toplevel):
                  fg=theme.C_TEXT, font=(theme.FONT, 13, 'bold')).pack(anchor='w', padx=16, pady=12)
         tk.Label(self, text=T('Vulkan 支持兼容的 NVIDIA / AMD / Intel 显卡；CUDA 支持 NVIDIA 显卡。需要对应显卡驱动；初始化失败时使用 CPU。'),
                  bg=theme.C_BG, fg=theme.C_SUB, wraplength=610, justify='left').pack(anchor='w', padx=16)
-        self.status_text = tk.Label(self, bg=theme.C_BG, fg=theme.C_SUB, wraplength=610, justify='left')
+        self.status_text = tk.Label(self, bg=theme.C_BG, fg=theme.C_SUB, wraplength=700, justify='left')
         self.status_text.pack(anchor='w', padx=16, pady=12)
+        self.version_vars = {}
+        self.version_combos = {}
+        self.version_labels = {}
+        self.action_buttons = {}
+        for backend in ('Vulkan', 'CUDA'):
+            row = tk.Frame(self, bg=theme.C_BG)
+            row.pack(fill='x', padx=16, pady=3)
+            tk.Label(row, text=T('%s 组件版本') % backend, bg=theme.C_BG,
+                     fg=theme.C_TEXT, width=17, anchor='w').pack(side='left')
+            variable = tk.StringVar()
+            combo = ttk.Combobox(row, textvariable=variable, state='readonly', width=48)
+            combo.pack(side='left', fill='x', expand=True)
+            combo.bind('<<ComboboxSelected>>', lambda _event, name=backend: self._refresh_action(name))
+            button = ttk.Button(row, text=T('启用 %s') % backend,
+                                command=lambda name=backend: self.download(name))
+            button.pack(side='left', padx=(8, 0))
+            self.version_vars[backend] = variable
+            self.version_combos[backend] = combo
+            self.version_labels[backend] = {}
+            self.action_buttons[backend] = button
         self.progress = ttk.Progressbar(self, maximum=100)
         self.progress.pack(fill='x', padx=16)
         self.message = tk.Label(self, bg=theme.C_BG, fg=theme.C_SUB, wraplength=610, justify='left')
         self.message.pack(anchor='w', padx=16, pady=8)
         bar = tk.Frame(self, bg=theme.C_BG)
         bar.pack(fill='x', padx=16, pady=8)
-        self.download_button = ttk.Button(bar, text=T('下载并启用 Vulkan'), command=lambda: self.download('Vulkan'))
-        self.download_button.pack(side='left')
-        self.cuda_button = ttk.Button(bar, text=T('下载并启用 CUDA'), command=lambda: self.download('CUDA'))
-        self.cuda_button.pack(side='left', padx=8)
         self.cpu_button = ttk.Button(bar, text=T('使用 CPU'), command=self.cpu)
-        self.cpu_button.pack(side='left', padx=8)
+        self.cpu_button.pack(side='left')
         self.cancel_button = ttk.Button(bar, text=T('取消下载'), command=self.cancel_download.set, state='disabled')
-        self.cancel_button.pack(side='left')
+        self.cancel_button.pack(side='left', padx=8)
         self.refresh()
+
+    def _selected_version(self, backend, status=None):
+        status = status or engine.accelerator.status(backend)
+        selected_id = self.version_labels[backend].get(self.version_vars[backend].get())
+        return next((item for item in status.get('versions', []) if item['id'] == selected_id), None)
+
+    def _refresh_action(self, backend):
+        selected = self._selected_version(backend)
+        busy = self.app.running or self.app._model_busy
+        available = bool(selected and selected.get('available'))
+        self.action_buttons[backend].configure(
+            text=T('启用 %s') % backend if selected and selected['installed'] else T('下载并启用 %s') % backend,
+            state='normal' if not busy and available else 'disabled')
 
     def refresh(self):
         vulkan_status = engine.accelerator.status('Vulkan')
         cuda_status = engine.accelerator.status('CUDA')
-        status = vulkan_status if self.backend == 'Vulkan' else cuda_status
         busy = self.app.running or self.app._model_busy
         device = engine.runtime_status()['device']
-        text = T('当前设备：%s\n组件目录：%s') % (device, status['directory'])
-        if status['size']:
-            text += '\n' + T('组件下载大小：%s') % human_size(status['size'])
-        if status.get('devices'):
-            text += '\n' + self.backend + ': ' + ', '.join(status['devices'])
-        if status['error']:
-            text += '\n' + status['error']
+        text = T('当前设备：%s') % device
+        for backend, status in (('Vulkan', vulkan_status), ('CUDA', cuda_status)):
+            selected = next((item for item in status.get('versions', []) if item['id'] == status.get('id')), None)
+            label = selected['label'] if selected else T('未配置')
+            suffix = T('已安装') if selected and selected['installed'] else T('未安装')
+            text += '\n%s：%s（%s）' % (backend, label, suffix)
+            if status.get('devices'):
+                text += '\n' + backend + ': ' + ', '.join(status['devices'])
+            if status['error']:
+                text += '\n' + status['error']
         self.status_text.configure(text=text)
-        self.download_button.configure(text=T('启用 Vulkan') if vulkan_status['installed'] else T('下载并启用 Vulkan'),
-            state='normal' if not busy and (vulkan_status['available'] or vulkan_status['installed']) else 'disabled')
-        self.cuda_button.configure(text=T('启用 CUDA') if cuda_status['installed'] else T('下载并启用 CUDA'),
-            state='normal' if not busy and (cuda_status['available'] or cuda_status['installed']) else 'disabled')
+        for backend, status in (('Vulkan', vulkan_status), ('CUDA', cuda_status)):
+            choices = {}
+            labels = []
+            for item in status.get('versions', []):
+                version = item['id'].split('-windows-x64-')[-1]
+                if backend == 'CUDA':
+                    version = version.removeprefix('v')
+                label = version + (' · ' + T('当前版本') if item.get('current') else '')
+                label += ' · ' + (T('已安装') if item['installed'] else T('可下载'))
+                labels.append(label)
+                choices[label] = item['id']
+            self.version_labels[backend] = choices
+            self.version_combos[backend].configure(values=labels, state='readonly' if labels and not busy else 'disabled')
+            selected_id = status.get('id', '')
+            selected_label = next((label for label, identifier in choices.items() if identifier == selected_id), '')
+            if selected_label:
+                self.version_vars[backend].set(selected_label)
+            selected = self._selected_version(backend, status)
+            available = bool(selected and selected.get('available'))
+            self.action_buttons[backend].configure(
+                text=T('启用 %s') % backend if selected and selected['installed'] else T('下载并启用 %s') % backend,
+                state='normal' if not busy and available else 'disabled')
         self.cpu_button.configure(state='disabled' if busy else 'normal')
 
     def cpu(self):
@@ -83,13 +132,19 @@ class AccelerationDialog(tk.Toplevel):
             self._wait_job = None
             self.refresh()
 
-    def download(self, backend):
+    def download(self, backend, component_id=None):
         if self.app.running or self.app._model_busy:
             return
         self.backend = backend
         status = engine.accelerator.status(backend)
-        if not status['installed']:
-            prompt = T('下载 %s 加速组件（%s）并启用？') % (backend, human_size(status['size']))
+        selected = next((item for item in status.get('versions', [])
+                         if item['id'] == (component_id or self.version_labels[backend].get(self.version_vars[backend].get()))), None)
+        if not selected:
+            self.message.configure(text=T('没有可用的 %s 组件版本。') % backend)
+            return
+        component_id = selected['id']
+        if not selected['installed']:
+            prompt = T('下载 %s 加速组件（%s）并启用？') % (backend, human_size(selected['size']))
             if backend == 'CUDA':
                 prompt += '\n\n' + T('继续表示你已阅读并同意 NVIDIA CUDA Toolkit EULA。')
                 prompt += '\nhttps://docs.nvidia.com/cuda/eula/'
@@ -109,11 +164,16 @@ class AccelerationDialog(tk.Toplevel):
 
         def work():
             try:
-                engine.accelerator.install(backend, progress, self.cancel_download.is_set)
+                engine.accelerator.install(backend, progress, self.cancel_download.is_set, component_id)
                 if self.cancel_download.is_set():
                     raise DownloadCancelled()
+                component = engine.accelerator.components[backend]
+                if component._loaded_id and component._loaded_id != component_id:
+                    engine.accelerator.enable(backend, True, component_id)
+                    self.result = T('%s 已准备好；重启 SeeName 后切换到此版本。') % backend
+                    return
                 engine.shutdown_server()
-                engine.accelerator.enable(backend, True)
+                engine.accelerator.enable(backend, True, component_id)
                 if not engine.start_server():
                     raise RuntimeError(engine.runtime_status()['error'])
                 component_error = engine.accelerator.components[backend].error

@@ -14,7 +14,8 @@ SOURCE_SHA256 = '611e1075d170ab8a1854a9aca6ed6fd141a91c0719cbf67d6cf0163b44b6dde
 RECIPE_FILES = (
     'scripts/build_vulkan.py', 'scripts/package_vulkan_source.py',
     'scripts/build_windows.py', 'scripts/README-vulkan.md',
-    '.github/workflows/windows-release.yml',
+    '.github/workflows/windows-release.yml', 'scripts/backend-versions.json',
+    'scripts/resolve_backend_assets.py',
     'inference/vulkan.py', 'inference/backend_component.py', 'inference/downloads.py',
     'inference/interfaces.py', 'inference/__init__.py',
     'requirements-inference.txt', 'requirements-media.txt',

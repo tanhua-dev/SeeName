@@ -1,9 +1,10 @@
 """Versioned optional native plugin: trusted catalog, verified install/loading.
 
 Only the selected ggml backend and its declared runtime files are added to the
-existing native runtime. Never replace a
-loaded llama/ggml DLL. A catalog is bundled at build time, not trusted from the
-download server; its native-runtime fingerprints must match this application.
+existing native runtime. Never replace a loaded llama/ggml DLL. A catalog is
+bundled at build time, not trusted from the download server; compatibility is
+gated by the pinned source commits and backend ABI. Runtime DLL hashes remain
+diagnostic fingerprints, while component files are checked against their hashes.
 """
 from __future__ import annotations
 
@@ -25,6 +26,17 @@ from .downloads import DownloadCancelled
 BINDING_COMMIT = 'ce261d12b5810fb4c6e695efc85d5e8cf23f0630'
 LLAMA_COMMIT = '27c7a769da1671c97b2e3f6cb88704a6e1e0d0cd'
 NATIVE_FILES = ('ggml-base.dll', 'ggml.dll', 'ggml-cpu.dll', 'llama.dll', 'mtmd.dll')
+BACKEND_ABI = 'ggml-backend-dl-v1'
+
+
+def compatibility_key(binding_commit=BINDING_COMMIT, llama_commit=LLAMA_COMMIT):
+    """Identify the source-level runtime ABI shared by app and backend builds.
+
+    Runtime DLL byte hashes are recorded for diagnostics, but are not a useful
+    compatibility key: hosted Windows runners can produce different DLL bytes
+    for the same pinned sources and ABI.
+    """
+    return f'windows-x64-{BACKEND_ABI}-binding-{binding_commit}-llama-{llama_commit}'
 
 
 def digest(path):
@@ -70,6 +82,30 @@ class NativeBackendComponent:
         self._dll_directory = None
         self.devices = []
         self.error = ''
+        self._version_entries = []
+
+    @property
+    def component_config_key(self):
+        return self.config_key.removesuffix('_enabled') + '_component_id'
+
+    def _validate_entry(self, entry):
+        if entry.get('binding_commit') != BINDING_COMMIT or entry.get('llama_commit') != LLAMA_COMMIT:
+            raise ValueError(f'{self.backend} component source version does not match')
+        expected_compatibility = compatibility_key(entry['binding_commit'], entry['llama_commit'])
+        if entry.get('compatibility_key', expected_compatibility) != expected_compatibility:
+            raise ValueError(f'{self.backend} component compatibility profile does not match')
+        identifier = entry['id']
+        if not identifier or any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789-_' for c in identifier):
+            raise ValueError('Invalid component identifier')
+        if set(entry['runtime_sha256']) != set(NATIVE_FILES):
+            raise ValueError('Incomplete native runtime fingerprints')
+        files = entry['files']
+        if set(files) != {self.plugin, 'LICENSE-llama.cpp.txt', *self.extra_files}:
+            raise ValueError(f'Unexpected {self.backend} component inventory')
+        max_size = 2 * 1024 * 1024 * 1024 if self.backend == 'CUDA' else 128 * 1024 * 1024
+        if not 0 < entry['size'] < max_size:
+            raise ValueError(f'Invalid {self.backend} archive size')
+        return entry
 
     def _entry(self):
         if sys.platform != 'win32' or platform.machine().lower() not in ('amd64', 'x86_64'):
@@ -80,36 +116,54 @@ class NativeBackendComponent:
         entry = data.get('windows-x64')
         if not entry:
             raise RuntimeError(f'No {self.backend} component has been published for this application build.')
-        if entry.get('binding_commit') != BINDING_COMMIT or entry.get('llama_commit') != LLAMA_COMMIT:
-            raise ValueError(f'{self.backend} component source version does not match')
-        identifier = entry['id']
-        if not identifier or any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789-_' for c in identifier):
-            raise ValueError('Invalid component identifier')
-        if set(entry['runtime_sha256']) != set(NATIVE_FILES):
-            raise ValueError('Incomplete native runtime fingerprints')
-        for name, expected in entry['runtime_sha256'].items():
-            if digest(runtime_directory() / name) != expected:
-                raise ValueError(f'{self.backend} component is incompatible with the CPU runtime: ' + name)
-        files = entry['files']
-        if set(files) != {self.plugin, 'LICENSE-llama.cpp.txt', *self.extra_files}:
-            raise ValueError(f'Unexpected {self.backend} component inventory')
-        max_size = 2 * 1024 * 1024 * 1024 if self.backend == 'CUDA' else 128 * 1024 * 1024
-        if not 0 < entry['size'] < max_size:
-            raise ValueError(f'Invalid {self.backend} archive size')
-        return entry
+        current = self._validate_entry(entry)
+        self._version_entries = [current]
+        for candidate in data.get('versions', []):
+            candidate = self._validate_entry(candidate)
+            if candidate['id'] != current['id'] and all(item['id'] != candidate['id'] for item in self._version_entries):
+                self._version_entries.append(candidate)
+        return current
+
+    def _installed_entries(self, current):
+        # Historical entries are copied into the trusted application catalog by
+        # the release resolver. Never trust a writable sidecar as a hash source.
+        return {item['id']: item for item in self._version_entries or [current]}
+
+    def _selected_entry(self, entries=None):
+        current = self._entry()
+        entries = entries or self._installed_entries(current)
+        selected_id = self.config().get(self.component_config_key, '')
+        if selected_id in entries:
+            return entries[selected_id]
+        # Preserve a previously installed compatible backend across an app
+        # update that pins a newer version. New installs use the current pin.
+        for entry in entries.values():
+            if (self.root / entry['id'] / self.plugin).is_file():
+                return entry
+        return current
 
     def status(self):
         """No native imports, network access or directory creation."""
         try:
-            entry = self._entry()
-            installed = (self.root / entry['id'] / self.plugin).is_file()
-            return dict(available=bool(entry.get('url')), installed=installed,
+            current = self._entry()
+            entries = self._installed_entries(current)
+            entry = self._selected_entry(entries)
+            versions = []
+            for item in entries.values():
+                path = self.root / item['id']
+                installed = (path / self.plugin).is_file()
+                versions.append(dict(id=item['id'], label=item['id'], installed=installed,
+                                     available=installed or bool(item.get('url')),
+                                     current=item['id'] == current['id'], size=item['size']))
+            return dict(available=bool(entry.get('url')) or (self.root / entry['id'] / self.plugin).is_file(),
+                        installed=(self.root / entry['id'] / self.plugin).is_file(),
                         enabled=bool(self.config().get(self.config_key, False)),
                         size=entry['size'], error=self.error, devices=list(self.devices),
+                        id=entry['id'], versions=versions,
                         directory=str(self.root / entry['id']))
         except Exception as error:
             return dict(available=False, installed=False, enabled=False, size=0,
-                        error=str(error), devices=[], directory=str(self.root))
+                        error=str(error), devices=[], versions=[], id='', directory=str(self.root))
 
     def _verify(self, folder, entry):
         for name, info in entry['files'].items():
@@ -117,10 +171,12 @@ class NativeBackendComponent:
             if not path.is_file() or path.is_symlink() or path.stat().st_size != info['size'] or digest(path) != info['sha256']:
                 raise ValueError(f'{self.backend} component verification failed: ' + name)
 
-    def install(self, progress=None, should_stop=None):
+    def install(self, progress=None, should_stop=None, component_id=None):
         """Download from the bundled HTTPS URL; cancelled transfers can resume."""
         with self._lock:
-            entry = self._entry()
+            entries = self._installed_entries(self._entry())
+            selected_id = component_id or self.config().get(self.component_config_key, '')
+            entry = entries.get(selected_id) or self._selected_entry(entries)
             final = self.root / entry['id']
             if final.exists():
                 self._verify(final, entry)
@@ -196,8 +252,11 @@ class NativeBackendComponent:
                     shutil.rmtree(stage)
             return str(final)
 
-    def enable(self, enabled):
-        self.save_config(**{self.config_key: bool(enabled)})
+    def enable(self, enabled, component_id=None):
+        values = {self.config_key: bool(enabled)}
+        if enabled and component_id:
+            values[self.component_config_key] = component_id
+        self.save_config(**values)
         self.error = ''
 
     def load(self):
@@ -206,7 +265,7 @@ class NativeBackendComponent:
             return False
         with self._lock:
             try:
-                entry = self._entry()
+                entry = self._selected_entry()
                 folder = self.root / entry['id']
                 self._verify(folder, entry)
                 from llama_cpp import _ggml as g

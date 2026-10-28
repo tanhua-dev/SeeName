@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from inference.cuda import CUDA_RUNTIME_FILES
 from inference.vulkan import BINDING_COMMIT, LLAMA_COMMIT, NATIVE_FILES, digest, runtime_directory
+from inference.backend_component import compatibility_key
 from scripts.package_vulkan_source import SOURCE_SHA256
 
 
@@ -146,17 +147,24 @@ def main():
         for path in sorted(package.iterdir()):
             zipped.write(path, path.name)
     entry = dict(id=identifier, binding_commit=BINDING_COMMIT, llama_commit=LLAMA_COMMIT,
+                 compatibility_key=compatibility_key(),
                  url=args.download_base_url.rstrip('/')+'/'+archive.name if args.download_base_url else '',
                  size=archive.stat().st_size, sha256=digest(archive), files=files,
                  runtime_sha256={name: digest(runtime_directory()/name) for name in NATIVE_FILES},
                  cuda_toolkit='12.4', driver_provided='nvcuda.dll')
-    catalog.write_text(json.dumps({'schema': 1, 'windows-x64': entry}, indent=2)+'\n', encoding='utf-8')
+    catalog_data = {'schema': 1, 'windows-x64': entry}
+    history = output / 'cuda-history.json'
+    if history.is_file():
+        catalog_data['versions'] = json.loads(history.read_text(encoding='utf-8')).get('versions', [])
+        history.unlink()
+    catalog.write_text(json.dumps(catalog_data, indent=2)+'\n', encoding='utf-8')
     archive.with_suffix('.zip.sha256').write_text(entry['sha256']+'  '+archive.name+'\n', encoding='ascii')
     with zipfile.ZipFile(source_output, 'x', zipfile.ZIP_DEFLATED, compresslevel=6) as zipped:
         zipped.write(upstream_zip, 'upstream/llama.cpp-'+LLAMA_COMMIT+'.zip')
         recipe = (ROOT/'scripts'/'build_cuda.py', ROOT/'scripts'/'README-cuda.md',
                   ROOT/'scripts'/'build_windows.py', ROOT/'scripts'/'windows.spec',
                   ROOT/'scripts'/'package_vulkan_source.py',
+                  ROOT/'scripts'/'backend-versions.json', ROOT/'scripts'/'resolve_backend_assets.py',
                   ROOT/'.github'/'workflows'/'windows-release.yml',
                   ROOT/'inference'/'cuda.py', ROOT/'inference'/'vulkan.py', ROOT/'inference'/'backend_component.py',
                   ROOT/'inference'/'accelerators.py', ROOT/'inference'/'llama_backend.py',

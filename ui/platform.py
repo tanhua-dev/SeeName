@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import time
 
 
@@ -48,6 +49,23 @@ def clean_stale_mei(max_age_min: float = 15.0) -> tuple[int, int]:
         except OSError:
             kept += 1
     return (gone, kept)
+
+
+def is_temporary_mei(path: str) -> bool:
+    """Return whether a frozen runtime path is a onefile extraction directory.
+
+    In PyInstaller onedir builds, ``sys._MEIPASS`` points at the persistent
+    ``_internal`` directory (or an app bundle resource directory). Only onefile
+    builds use a temporary ``_MEI...`` directory that is safe to remove.
+    """
+    candidate = os.path.abspath(path)
+    if not os.path.basename(candidate).upper().startswith('_MEI'):
+        return False
+    temporary = os.path.abspath(tempfile.gettempdir())
+    try:
+        return os.path.commonpath((candidate, temporary)) == temporary
+    except ValueError:  # Different Windows drives cannot share a common path.
+        return False
 
 
 def enable_dpi():

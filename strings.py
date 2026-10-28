@@ -69,6 +69,16 @@ def T(s: str, **kw) -> str:
 #       英文里适当加词让语句自然，但不敢改动占位符的数量和顺序。
 EN = {}
 EN.update({
+    '%s 组件版本': '%s component version',
+    '启用 %s': 'Use %s',
+    '下载并启用 %s': 'Download and enable %s',
+    '已安装': 'Installed',
+    '未安装': 'Not installed',
+    '可下载': 'Available',
+    '当前版本': 'Current',
+    '未配置': 'Not configured',
+    '没有可用的 %s 组件版本。': 'No available %s component version.',
+    '%s 已准备好；重启 SeeName 后切换到此版本。': '%s is ready; restart SeeName to switch to this version.',
     # ↓ v3.16 界面改版新增（操作行 / 底部状态栏 / 右侧栏 / ⋯更多 菜单）
     '⚙ 设置': '⚙ Settings',
     '⋯ 更多': '⋯ More',

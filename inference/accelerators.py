@@ -35,10 +35,10 @@ class AcceleratorSelector:
     def status(self, name):
         return self.components[name].status()
 
-    def enable(self, name, enabled):
+    def enable(self, name, enabled, component_id=None):
         if enabled:
             for other, component in self.components.items():
-                component.enable(other == name)
+                component.enable(other == name, component_id if other == name else None)
         else:
             self.components[name].enable(False)
 
@@ -46,5 +46,5 @@ class AcceleratorSelector:
         for component in self.components.values():
             component.enable(False)
 
-    def install(self, name, progress=None, should_stop=None):
-        return self.components[name].install(progress, should_stop)
+    def install(self, name, progress=None, should_stop=None, component_id=None):
+        return self.components[name].install(progress, should_stop, component_id)
