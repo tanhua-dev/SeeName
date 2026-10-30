@@ -140,7 +140,10 @@ class HelpDialog(tk.Toplevel):
         self.title('%s　·　%s' % (T('使用说明'), APP_TITLE))
         self.configure(bg=theme.C_BG)
         self.transient(master)
-        self.geometry('880x680')
+        # 尺寸跟着屏幕走：小屏上不再顶到屏幕外（原来是写死的 880x680）
+        from ..controls import work_area
+        sw, sh = work_area(self)
+        self.geometry('%dx%d' % (min(880, int(sw * 0.88)), min(680, int(sh * 0.86))))
         self.minsize(620, 440)
 
         head = tk.Frame(self, bg=theme.C_BG)
@@ -184,8 +187,8 @@ class HelpDialog(tk.Toplevel):
         foot.pack(fill='x', padx=16, pady=12)
         self.var_noauto = tk.BooleanVar(
             value=not bool((engine.config() or {}).get('help_autoshow', True)))
-        ttk.Checkbutton(foot, text=T('下次启动不再自动显示'),
-                        variable=self.var_noauto).pack(side='left')
+        from ..controls import CheckRow
+        CheckRow(foot, T('下次启动不再自动显示'), self.var_noauto).pack(side='left')
         ttk.Button(foot, text=T('关闭'), style='Go.TButton', width=theme.button_width(10, 12),
                    command=self.on_close).pack(side='right')
 

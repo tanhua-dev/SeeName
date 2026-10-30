@@ -20,9 +20,11 @@ from core.features import metadata_writing_enabled
 from . import theme
 from .common import APP_AUTHOR, APP_SUB, APP_TITLE, APP_VER, asset_path, cut, fmt_dur, open_path
 from .widgets import Hover, Tip
+from .controls import CheckRow
 from .dialogs.information import AboutDialog, HelpDialog, help_path
 from .dialogs.models import ModelDialog
 from .dialogs.acceleration import AccelerationDialog
+from .dialogs.settings import SettingsDialog
 from .dialogs.review import PlanDialog, RenameResultDialog, ReplaceDialog
 
 
@@ -55,6 +57,30 @@ class App:
         self._thumbs: dict = {}         # index -> 宫格图 bytes
         self._photo_thumbs: dict = {}   # index -> 照片缩略图 PhotoImage（点行时现读，缓存复用）
         self._tip = None                # 悬浮提示（文件名被截断时用）
+
+        # ---- 设置项的状态变量：先建好，设置窗口开没开都能读写 ----
+        # （设置窗口是二级窗口、按需创建，但这些值在「开始识别」等流程里随时要用）
+        cfg = engine.config() or {}
+        self.var_frames = tk.StringVar(value=T('自动'))
+        self.var_limit = tk.StringVar(value='0')
+        self.var_all = tk.BooleanVar(value=False)
+        self.var_model = tk.StringVar(value=engine.selected_model())
+        self.var_netgeo = tk.BooleanVar(value=self._sw('net_geo', False))
+        self.var_amap = tk.StringVar(value=str(cfg.get('amap_key') or ''))
+        self.var_geolv = tk.StringVar(
+            value=T('到街道') if cfg.get('geo_level') == 'street' else T('到区县'))
+        self.var_meta = tk.BooleanVar(
+            value=metadata_writing_enabled() and self._sw('write_meta', True))
+        self.var_txt = tk.BooleanVar(value=self._sw('write_txt', True))
+        self.var_md = tk.BooleanVar(value=self._sw('write_md', True))
+        self.var_lang = tk.StringVar(
+            value=T('中文') if strings.lang() == 'zh' else 'English')
+        # 这些控件只在设置窗口里存在；窗口没开时保持 None，用到的地方都要判空
+        self.cb_model = None
+        self.btn_model = None
+        self.sp_limit = None
+        self.ent_amap = None
+        self.settings_dlg = None
 
         root.title('%s %s' % (APP_TITLE, APP_VER))
         root.geometry(self._saved_geometry('1120x760'))
@@ -182,8 +208,7 @@ class App:
         # 侧栏里的设置也是「运行中不要改」，所以这里统一收，别漏掉后来加的项。
         self._busy_widgets = [w for w in (
             self.ent_dir, self.cmb_preset, self.cb_video, self.cb_photos,
-            self.cb_desc_photo, self.cmb_frames, self.sp_limit, self.cb_all,
-            self.cb_model, self.btn_model, self.cmb_lang,
+            self.cb_desc_photo,
         ) if w is not None]
 
     def _card(self, parent, title=None):
@@ -219,6 +244,9 @@ class App:
         # 使用说明：标题栏右侧常驻，第一次启动还会自己弹一次（见 _maybe_help）
         ttk.Button(head, text=T('❓ 使用说明'), command=self.open_help,
                    width=theme.button_width(12, 16)).pack(side='right', pady=(4, 0))
+        # 设置：常驻在标题栏，不再藏在右下角侧栏里
+        ttk.Button(head, text=T('⚙ 设置'), command=self.open_settings,
+                   width=theme.button_width(9, 12)).pack(side='right', padx=(0, 8), pady=(4, 0))
 
     def _build_control(self, parent):
         card = self._card(parent)
@@ -259,20 +287,18 @@ class App:
         #    全部只按「时间 + 地名」命名（慢机器的纯离线快路径）。
         #    状态写进 config.json（键名 ai_desc，默认开），下次打开保持。
         self.var_ai_desc = tk.BooleanVar(value=self._sw('ai_desc', True))
-        self.cb_ai_desc = ttk.Checkbutton(box, text=T('AI描述'),
-                                          variable=self.var_ai_desc,
-                                          style='Scope.TCheckbutton',
-                                          command=self._on_ai_desc)
+        # 勾选框统一用 CheckRow：方块 + 白勾、整行可点、悬停高亮，
+        # 比 ttk 自带的 13px 指示器清楚得多（那玩意在小窗口里像个小黑点）
+        self.cb_ai_desc = CheckRow(box, T('AI描述'), self.var_ai_desc,
+                                   command=self._on_ai_desc)
         self.cb_ai_desc.pack(side='left')
         self.var_video = tk.BooleanVar(value=True)
-        self.cb_video = ttk.Checkbutton(box, text=T('视频'), variable=self.var_video,
-                                        style='Scope.TCheckbutton',
-                                        command=self._refresh_scope)
+        self.cb_video = CheckRow(box, T('视频'), self.var_video,
+                                 command=self._refresh_scope)
         self.cb_video.pack(side='left', padx=(22, 0))
         self.var_photos = tk.BooleanVar(value=True)
-        self.cb_photos = ttk.Checkbutton(box, text=T('照片'), variable=self.var_photos,
-                                         style='Scope.TCheckbutton',
-                                         command=self._refresh_scope)
+        self.cb_photos = CheckRow(box, T('照片'), self.var_photos,
+                                  command=self._refresh_scope)
         self.cb_photos.pack(side='left', padx=(22, 0))
         # 「照片也写内容描述」是范围选项（决定照片要不要多花 11 秒/张送模型），
         # 跟着视频/照片放一起；原来的位置让给侧栏底部的耗时说明
@@ -281,10 +307,16 @@ class App:
         # 临时取消勾选即可——该选项不写盘，下次打开恢复打勾。
         # v3.22 起它是「AI描述」的子选项：总开关关掉时自动置灰（见 _refresh_scope）。
         self.var_desc_photo = tk.BooleanVar(value=True)
-        self.cb_desc_photo = ttk.Checkbutton(box, text=T('照片也写内容描述'),
-                                             variable=self.var_desc_photo,
-                                             command=self._refresh_scope)
+        self.cb_desc_photo = CheckRow(box, T('照片也写内容描述'), self.var_desc_photo,
+                                      command=self._refresh_scope)
         self.cb_desc_photo.pack(side='left', padx=(22, 0))
+
+        # 处理范围的耗时/后果说明：直接放在勾选行下面，一眼能看到「这次会处理什么」。
+        # （原先是塞在侧栏设置区底部，窗口一小就被挤到看不见的地方）
+        self.lbl_scope = tk.Label(inner, text='', bg=theme.C_CARD, fg=theme.C_SUB,
+                                  font=(theme.FONT, 9), anchor='w', justify='left',
+                                  wraplength=660)
+        self.lbl_scope.pack(fill='x', pady=(4, 0))
 
         # —— 第三行：只有一个主要动作。「停止识别」平时不占位置，
         #    运行时才 pack 出来（见 _show_stop），结束/停掉后自动收回去。
@@ -417,20 +449,16 @@ class App:
         # —— 收起态：一条窄边 + 一个 ⚙ 按钮
         self.sb_closed = tk.Frame(sb, bg=theme.C_CARD)
         b = ttk.Button(self.sb_closed, text='⚙', width=3,
-                       command=lambda: self._side_apply(True))
+                       command=self.open_settings)
         b.pack(padx=4, pady=(4, 2))
-        Hover(b, lambda: T('展开侧栏（预览 + 设置）'))
+        Hover(b, lambda: T('打开设置'))
         tk.Label(self.sb_closed, text=T('设置'), bg=theme.C_CARD, fg=theme.C_SUB,
                  font=(theme.FONT, 8)).pack(pady=(0, 6))
 
-        # —— 展开态：整条侧栏共用一个滚动容器（预览在上、设置在下，
-        #    以后设置再加也不会把预览挤出窗口）
+        # —— 展开态：只有预览。设置已经搬到二级窗口（标题栏的「⚙ 设置」），
+        #    不再挤在侧栏最底部，所以这里不需要滚动容器了。
         self.sb_open = tk.Frame(sb, bg=theme.C_BG)
-        outer, inner, cv = self._scroller(self.sb_open, bg=theme.C_BG)
-        outer.pack(fill='both', expand=True)
-        self._build_preview(inner)
-        self._build_settings(inner)
-        self._wheel_up(cv, inner)
+        self._build_preview(self.sb_open)
         self._side_apply(bool(self.var_side.get()))
 
     def _side_apply(self, opened: bool):
@@ -466,49 +494,6 @@ class App:
             pass
         return default
 
-    @staticmethod
-    def _scroller(parent, bg=theme.C_CARD, width=316):
-        """可滚动容器：整条侧栏（预览 + 设置）共用，设置项以后还会往里加。"""
-        outer = tk.Frame(parent, bg=bg)
-        cv = tk.Canvas(outer, bg=bg, highlightthickness=0, width=width, height=120)
-        vs = ttk.Scrollbar(outer, orient='vertical', command=cv.yview)
-        cv.configure(yscrollcommand=vs.set)
-        cv.pack(side='left', fill='both', expand=True)
-        vs.pack(side='right', fill='y')
-        inner = tk.Frame(cv, bg=bg)
-        iid = cv.create_window((0, 0), window=inner, anchor='nw')
-        inner.bind('<Configure>',
-                   lambda e: cv.configure(scrollregion=cv.bbox('all')))
-        cv.bind('<Configure>', lambda e: cv.itemconfigure(iid, width=e.width))
-
-        def _wheel(e):
-            try:
-                cv.yview_scroll(int(-1 * (e.delta / 120)), 'units')
-            except Exception:
-                pass
-        for w in (outer, cv, inner):
-            w.bind('<MouseWheel>', _wheel)
-        return outer, inner, cv
-
-    @staticmethod
-    def _wheel_up(cv, top):
-        """把滚轮事件递归绑到一个容器及其全部子孙上（Tk 不会自动往下传）。"""
-
-        def _wheel(e):
-            try:
-                cv.yview_scroll(int(-1 * (e.delta / 120)), 'units')
-            except Exception:
-                pass
-
-        def _rec(w):
-            try:
-                w.bind('<MouseWheel>', _wheel)
-                for c in w.winfo_children():
-                    _rec(c)
-            except Exception:
-                pass
-        _rec(top)
-
     def _build_preview(self, parent):
         card = self._card(parent)
         card.pack(fill='x')
@@ -532,134 +517,6 @@ class App:
             padx=12, pady=(0, 6), fill='x')
         ttk.Button(card, text=T('打开改名台账'), command=self.open_ledger).pack(
             padx=12, pady=(0, 10), fill='x')
-
-    def _build_settings(self, parent):
-        card = self._card(parent)
-        card.pack(fill='x', pady=(10, 0))
-        head = tk.Frame(card, bg=theme.C_CARD)
-        head.pack(fill='x', padx=theme.S4, pady=(theme.S2 + 1, theme.S1))
-        tk.Label(head, text=T('⚙ 设置'), bg=theme.C_CARD, fg=theme.C_SUB,
-                 font=(theme.FONT, 10, 'bold')).pack(side='left')
-
-        body = tk.Frame(card, bg=theme.C_CARD)
-        body.pack(fill='x', padx=theme.S4, pady=(0, 10))
-
-        # ① 抽帧数
-        self.var_frames = tk.StringVar(value=T('自动'))
-        self.cmb_frames = ttk.Combobox(self._set_row(body, T('抽帧数')),
-                                       textvariable=self.var_frames,
-                                       width=theme.button_width(7, 9), state='readonly',
-                                       values=[T('自动'), '2', '4', '6', '8'])
-        self.cmb_frames.pack(side='right')
-
-        # ② 最多处理个数
-        r = self._set_row(body, T('最多处理个数'))
-        tk.Label(r, text=T('个（0=全部）'), bg=theme.C_CARD, fg=theme.C_HINT,
-                 font=(theme.FONT, 8)).pack(side='right')
-        self.var_limit = tk.StringVar(value='0')
-        self.sp_limit = ttk.Spinbox(r, from_=0, to=100000,
-                                    textvariable=self.var_limit, width=theme.button_width(6, 7))
-        self.sp_limit.pack(side='right', padx=(0, 5))
-
-        # ③ 重新处理已改过名的
-        self.var_all = tk.BooleanVar(value=False)
-        self.cb_all = ttk.Checkbutton(body, text=T('重新处理已改过名的'),
-                                      variable=self.var_all)
-        self.cb_all.pack(fill='x', anchor='w', pady=(0, 7))
-
-        # ④ 模型（下拉 + 模型管理）
-        self.var_model = tk.StringVar(value=engine.selected_model())
-        self.cb_model = ttk.Combobox(self._set_row(body, T('模型')),
-                                     textvariable=self.var_model,
-                                     width=theme.button_width(20, 21), state='readonly',
-                                     values=[item['name'] for item in engine.MODEL_CATALOG])
-        self.cb_model.pack(side='right')
-        self.cb_model.bind('<<ComboboxSelected>>', lambda e: self.choose_model(self.var_model.get()))
-        self.btn_model = ttk.Button(body, text=T('模型管理…'),
-                                    command=self.open_model_dialog)
-        self.btn_model.pack(fill='x', pady=(0, 7))
-
-        # ⑤ 照片也写内容描述 —— 已移到「处理范围」行（跟视频/照片并列）
-
-        # ⑥ 联网精确定位（默认关：关着就是纯离线，一个网络包都不发）
-        ttk.Separator(body, orient='horizontal').pack(fill='x', pady=(2, 8))
-        self.var_netgeo = tk.BooleanVar(value=self._sw('net_geo', False))
-        self.cb_netgeo = ttk.Checkbutton(body, text=T('联网精确定位'),
-                                         variable=self.var_netgeo,
-                                         command=self._on_netgeo)
-        self.cb_netgeo.pack(fill='x', anchor='w')
-        self.lbl_netgeo = tk.Label(
-            body, bg=theme.C_CARD, fg=theme.C_SUB, font=(theme.FONT, 8), anchor='w', justify='left',
-            wraplength=250,
-            text=T('开启后将在有网时调用在线地图接口获取更精确地址，会产生网络请求'))
-        self.lbl_netgeo.pack(fill='x', pady=(1, 7))
-
-        r = self._set_row(body, T('高德 API Key'))
-        self.var_amap = tk.StringVar(
-            value=str((engine.config() or {}).get('amap_key') or ''))
-        self.ent_amap = ttk.Entry(r, textvariable=self.var_amap, width=theme.button_width(17, 19))
-        self.ent_amap.pack(side='right')
-        self.var_amap.trace_add('write', lambda *a: self._save_amap())
-        self.lbl_amap = tk.Label(
-            body, bg=theme.C_CARD, fg=theme.C_SUB, font=(theme.FONT, 8), anchor='w', justify='left',
-            wraplength=250,
-            text=T('国内坐标用它查街道级地址，去 lbs.amap.com 免费申请；不填就一直走离线库'))
-        self.lbl_amap.pack(fill='x', pady=(1, 7))
-
-        self.var_geolv = tk.StringVar(
-            value=T('到街道') if (engine.config() or {}).get('geo_level') == 'street'
-            else T('到区县'))
-        self.cmb_geolv = ttk.Combobox(
-            self._set_row(body, T('地址粒度')), textvariable=self.var_geolv,
-            width=theme.button_width(8, 10), state='readonly',
-            values=[T('到区县'), T('到街道')])
-        self.cmb_geolv.pack(side='right')
-        self.cmb_geolv.bind('<<ComboboxSelected>>', self._on_geolv)
-
-        # ⑦ 描述落盘（三个独立开关，默认全开）
-        ttk.Separator(body, orient='horizontal').pack(fill='x', pady=(2, 8))
-        self.var_meta = tk.BooleanVar(value=metadata_writing_enabled() and self._sw('write_meta', True))
-        self.cb_meta = ttk.Checkbutton(body, text=T('写入文件元数据'),
-                                       variable=self.var_meta,
-                                       command=lambda: self._save_sw('write_meta', self.var_meta))
-        if not metadata_writing_enabled():
-            self.cb_meta.state(['disabled'])
-        self.cb_meta.pack(fill='x', anchor='w')
-        self.var_txt = tk.BooleanVar(value=self._sw('write_txt', True))
-        ttk.Checkbutton(body, text=T('生成 .ai.txt 摘要'),
-                        variable=self.var_txt,
-                        command=lambda: self._save_sw('write_txt', self.var_txt)
-                        ).pack(fill='x', anchor='w')
-        self.var_md = tk.BooleanVar(value=self._sw('write_md', True))
-        ttk.Checkbutton(body, text=T('生成 目录说明.md'),
-                        variable=self.var_md,
-                        command=lambda: self._save_sw('write_md', self.var_md)
-                        ).pack(fill='x', anchor='w')
-        tk.Label(body, bg=theme.C_CARD, fg=theme.C_SUB, font=(theme.FONT, 8),
-                 anchor='w', justify='left', wraplength=250,
-                 text=T('元数据写进文件本身（照片 EXIF/XMP、视频容器标签），'
-                        '拷贝到任何地方都带着走；三个开关各管一件事，关掉就不生成。')
-                 ).pack(fill='x', pady=(1, 7))
-
-        # ⑧ 语言
-        self.var_lang = tk.StringVar(
-            value=T('中文') if strings.lang() == 'zh' else 'English')
-        self.cmb_lang = ttk.Combobox(self._set_row(body, T('语言')),
-                                     textvariable=self.var_lang,
-                                     width=theme.button_width(8, 10), state='readonly',
-                                     values=[T('中文'), 'English'])
-        self.cmb_lang.pack(side='right')
-        self.cmb_lang.bind('<<ComboboxSelected>>', self._on_lang_pick)
-
-        # 处理范围行的耗时说明原来挤在勾选框右边，v3.18 起放到设置区底部当脚注：
-        # 状态栏已经塞了模型圆点/端口/模型库路径，底部更挤，而这里本来就有空。
-        # 文字会跟着勾选变化（_refresh_scope），所以用 wraplength 允许折行。
-        self.lbl_scope = tk.Label(body, text='', bg=theme.C_CARD, fg=theme.C_SUB,
-                                  font=(theme.FONT, 8), anchor='w', justify='left',
-                                  wraplength=250)
-        self.lbl_scope.pack(fill='x', pady=(4, 0))
-
-        # ↑↑ 以后要加新开关，就往这行上面接着塞一行（放不下会自动出滚动条）
 
     # ------------------------------------------------------------ 新增开关的落盘
     def _save_sw(self, key, var):
@@ -1064,13 +921,17 @@ class App:
         if self.running or self._model_busy:
             return False
         self._model_busy = True
-        self.cb_model.configure(state='disabled')
+        if self.cb_model is not None:
+            self.cb_model.configure(state='disabled')
         self.dot_srv.configure(text=T('● 模型操作中…'), fg=theme.C_ACCENT)
 
         def work():
             try:
-                action()
-                self.q.put(('model_done', (True, message), None))
+                # 动作可以返回一句话覆盖默认提示（例如「已暂停，进度已保留」）：
+                # 用户主动暂停不该被当成失败播报
+                result = action()
+                self.q.put(('model_done', (True, result if isinstance(result, str) and result
+                                           else message), None))
             except Exception as error:
                 self.q.put(('model_done', (False, str(error)), None))
 
@@ -1119,12 +980,22 @@ class App:
                 return
         ModelDialog(self.root, self)
 
-    def open_acceleration(self):
-        for window in self.root.winfo_children():
-            if isinstance(window, AccelerationDialog):
-                window.lift()
+    def open_settings(self):
+        """二级窗口：所有设置（含 GPU 加速）都在这一层，不再往下套第三层。"""
+        dlg = getattr(self, 'settings_dlg', None)
+        try:
+            if dlg is not None and dlg.winfo_exists():
+                dlg.deiconify()
+                dlg.lift()
+                dlg.focus_set()
                 return
-        AccelerationDialog(self.root, self)
+        except Exception:
+            pass
+        self.settings_dlg = SettingsDialog(self.root, self)
+
+    def open_acceleration(self):
+        """旧入口保留：GPU 加速已经并入设置窗口，这里直接开设置。"""
+        self.open_settings()
 
     def on_rollback(self):
         d = os.path.abspath(self.var_dir.get())
@@ -1281,13 +1152,20 @@ class App:
                 pass
             elif kind == 'model_done':
                 self._model_busy = False
-                self.cb_model.configure(state='readonly')
+                if self.cb_model is not None:
+                    try:
+                        self.cb_model.configure(state='readonly')
+                    except Exception:
+                        pass
                 ok, message = payload
                 self.log(message, 'ok' if ok else 'err')
                 self.update_server(engine.server_info(), engine.list_models(), engine.runtime_status())
                 for window in self.root.winfo_children():
-                    if isinstance(window, (ModelDialog, AccelerationDialog)):
-                        window.refresh()
+                    if isinstance(window, (ModelDialog, AccelerationDialog, SettingsDialog)):
+                        try:
+                            window.refresh()
+                        except Exception:
+                            pass
             elif kind == 'end':
                 self.finish()
 
@@ -1308,7 +1186,11 @@ class App:
         self.lbl_models.configure(text=T('模型库 %s') % cut(rt['models_dir'], 34))
         self._models_full = rt['models_dir']
         values = list(dict.fromkeys(models + [item['name'] for item in engine.MODEL_CATALOG]))
-        self.cb_model.configure(values=values)
+        if self.cb_model is not None:
+            try:
+                self.cb_model.configure(values=values)
+            except Exception:
+                pass
         dot = self.dot_srv
         self._srv_hint = rt.get('error') or T('点这里加载所选模型')
         if self._model_busy or rt.get('busy'):

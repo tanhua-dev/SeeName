@@ -33,7 +33,8 @@ Models load when recognition starts, or when you click the status indicator. Cha
 - **`▶ Start recognition`**: starts the run. While it runs, `Stop recognition` appears next to it; clicking it stops after the current file, and everything already done is kept.
 - **Progress bar + status light**: the light on the right reads `● Not started`, `● Recognizing…`, `● Stopping…`, `● Stopped manually · x/y done` or `● Done · x items`.
 - **Results table**: columns are `#`, `Original name`, `New name`, `Place`, `Description`, `Time`, `Status`. Below it are `Copy all` and `Clear`.
-- **Right sidebar**: `What the model sees` on top (shows the image actually sent to the model), `⚙ Settings` below. Click `»` at the top right to collapse it; collapsed, only a `⚙` remains — click that to expand again.
+- **Right sidebar**: only `What the model sees` (the image actually sent to the model). Click `»` at the top right to collapse it; collapsed, only a `⚙` remains — click that to open settings.
+- **`⚙ Settings`** (top right of the window): every option lives on this one page — recognition, models, place lookup, output, GPU acceleration, language. Changes save immediately. Checkboxes are a box with a tick, and the whole row is clickable.
 - **Bottom status bar**: model readiness/loading/error state, then `llama.cpp · CPU`, then the model directory. Click the status to load in advance; hover for errors or full paths.
 - **`⋯ More`** (bottom right): `Review and rename…`, `Roll back renames in this folder`, `Open this folder`, `Open recognition report`, `Open rename ledger`, `Model manager…`, `About`, and the run-log toggle.
 - **`▸ Run log`**: expands to show details for each file. It opens by itself when something goes wrong.
@@ -44,7 +45,7 @@ Models load when recognition starts, or when you click the status indicator. Cha
 - **Frames per video**: how many images are sent to the model. `Auto` picks by length (2 for short clips, 6 for long ones) — usually leave it. Raise it (4/6/8) if results look off; lower it for simple footage to go faster.
 - **Max items**: how many files this run handles; `0` means all. Set `10` to try a small batch first.
 - **Re-process already renamed**: off by default. Tick it to re-recognize files that already have a `视2024…` style name; leave it off to skip them and work in batches.
-- **Model**: select 4B / 2B Q4 / Q8 or import existing 4B F16 weights. Default: 4B Q8. Model manager supports downloads and local directory selection.
+- **Model**: select 4B / 2B Q4 / Q8 or import existing 4B F16 weights. Default: 4B Q4. Model manager supports downloads and local directory selection.
 - **Online precise location**: **off by default**. While off the app sends no network requests at all and places come from the built-in offline database (district level). Turn it on to query an online map service for street/town level names — if it fails or you are offline, it silently falls back to the offline database.
 - **Amap API key**: with online location on, this is used for coordinates inside China to get street-level addresses. Get a free key at lbs.amap.com; without it, Chinese coordinates keep using the offline database (coordinates outside China are unaffected — they use Nominatim).
 - **Address detail**: how precise online lookups should be — `District` or `Street`.
