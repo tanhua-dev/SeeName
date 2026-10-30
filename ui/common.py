@@ -16,7 +16,7 @@ APP_TITLE = '显影 SeeName'
 APP_SUB = '看见，即命名。/ See it. Name it.'
 # tanhua 只作为作者/开发者署名保留，不再指代产品
 APP_AUTHOR = '作者：tanhua' if strings.lang() == 'zh' else 'By tanhua'
-APP_VER = 'v1.0'
+APP_VER = 'v2.0'
 
 
 def asset_path(name: str) -> str:

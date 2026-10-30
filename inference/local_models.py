@@ -19,6 +19,33 @@ PROJECTORS = ('mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf',
               'mmproj-Qwen3VL-4B-Instruct-F16.gguf')
 
 
+def _user_base() -> str:
+    """系统给本用户的软件数据根目录（模型、组件装不进口录时退回这里）。"""
+    if sys.platform == 'win32':
+        base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/AppData/Local')
+    elif sys.platform == 'darwin':
+        base = os.path.expanduser('~/Library/Application Support')
+    else:
+        base = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+        if not os.path.isabs(base):
+            base = os.path.expanduser('~/.local/share')
+    return base
+
+
+def _writable(path: str) -> bool:
+    """目录能不能真的写进去（只读的安装目录要能识别出来）。"""
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, '.write_probe')
+        with open(probe, 'wb') as stream:
+            stream.write(b'1')
+        os.remove(probe)
+        return True
+    except OSError:
+        return False
+
+
+
 @dataclass(frozen=True)
 class ModelFiles:
     name: str
@@ -60,15 +87,12 @@ class LocalModelStore:
         # Keep legacy Ollama models_dir separate: those blob files are not GGUF pairs.
         value = self.config().get('gguf_models_dir')
         if not value:
-            if sys.platform == 'win32':
-                base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/AppData/Local')
-            elif sys.platform == 'darwin':
-                base = os.path.expanduser('~/Library/Application Support')
-            else:
-                base = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
-                if not os.path.isabs(base):
-                    base = os.path.expanduser('~/.local/share')
-            value = os.path.join(base, 'SeeName', 'models')
+            # 解压即用：模型默认放在软件目录下的 models/，整个文件夹拷走就能用，
+            # 不往 C 盘用户目录里另存一份。软件目录写不进去（装在 Program Files、
+            # 或 mac 的 .app 里）才退回系统用户目录。
+            value = os.path.join(self.app_dir, 'models')
+            if not _writable(value):
+                value = os.path.join(_user_base(), 'SeeName', 'models')
         value = os.path.abspath(os.path.expanduser(str(value)))
         if create:
             os.makedirs(value, exist_ok=True)
@@ -86,9 +110,12 @@ class LocalModelStore:
         if name not in MODEL_NAMES:
             return [], T('不支持的模型：%s') % name
         roots = [Path(self.directory(create=False))]
-        # Preserve discovery of pre-download portable/source installations.
-        if not self.config().get('gguf_models_dir'):
-            roots.append(Path(self.app_dir) / 'models')
+        # 便携模式下 directory() 本身就是 <软件目录>/models，这两个可能重合；
+        # 只在真的不是同一个目录时才追加第二个搜索根，免得同一个文件被当成两份。
+        portable = Path(self.app_dir) / 'models'
+        if not self.config().get('gguf_models_dir') and portable.resolve() not in {
+                Path(r).resolve() for r in roots}:
+            roots.append(portable)
         directories = []
         for root in roots:
             try:

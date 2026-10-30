@@ -140,13 +140,22 @@ model_store: ModelStore = LocalModelStore(
     save_config=lambda **kw: save_config(**kw))
 vulkan_component = VulkanComponent(lambda: config(), lambda **kw: save_config(**kw))
 cuda_component = CudaComponent(lambda: config(), lambda **kw: save_config(**kw))
-accelerator = AcceleratorSelector(lambda: config(), Vulkan=vulkan_component, CUDA=cuda_component)
+accelerator = AcceleratorSelector(lambda: config(), save_config=lambda **kw: save_config(**kw),
+                                  Vulkan=vulkan_component, CUDA=cuda_component)
 model_backend: InferenceBackend = LlamaBackend(model_store, context_size=CTX, accelerator=accelerator)
 
 
 def models_dir(create=True) -> str:
     """本地 GGUF 模型库目录，不复用旧 Ollama blob 目录配置。"""
     return model_store.directory(create=create)
+
+
+def auto_pick_accelerator() -> str:
+    """首次运行按已装组件挑一次加速后端；返回选中的名字（CPU 返回空串）。"""
+    try:
+        return accelerator.autopick()
+    except Exception:
+        return ''
 
 
 def runtime_status() -> dict:

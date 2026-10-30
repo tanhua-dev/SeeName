@@ -190,10 +190,23 @@ class App:
         threading.Thread(target=self._autostart_bg, daemon=True).start()
 
     def _autostart_bg(self):
+        picked = ''
+        try:
+            # 首次运行：本地已经有加速组件就自动开起来（默认 CPU 是因为发行包不带
+            # 运行库，不是因为假设没独显）。用户自己选过之后这里就不再插手。
+            picked = engine.auto_pick_accelerator()
+            if picked:
+                self.q.put(('log', T('检测到已装好的 %s 组件，已自动启用显卡加速') % picked, 'ok'))
+        except Exception:
+            picked = ''         # 挑加速失败绝不能挡住推理库启动
         try:
             ok = engine.start_server(on_log=lambda s: self.q.put(('log', s, 'err')))
-            self.q.put(('log', T('本地推理库已就绪 · CPU') if ok else T('本地推理库不可用'),
-                        'ok' if ok else 'err'))
+            if not ok:
+                self.q.put(('log', T('本地推理库不可用'), 'err'))
+            elif picked:
+                self.q.put(('log', T('本地推理库已就绪 · %s') % picked, 'ok'))
+            else:
+                self.q.put(('log', T('本地推理库已就绪 · CPU'), 'ok'))
         except Exception:
             self.q.put(('log', traceback.format_exc(), 'err'))
         self.q.put(('srv', None, None))
@@ -210,10 +223,6 @@ class App:
         # body 才不会在内容超高时把它们挤出去。
         self._build_head()
         self._build_statusbar()
-        tk.Label(self.root,
-                 text=T('地名数据 © OpenStreetMap 贡献者（ODbL）· 全球城市 GeoNames（CC-BY 4.0）'),
-                 bg=theme.C_BG, fg=theme.C_SUB, font=(theme.FONT, 8)).pack(side='bottom', fill='x',
-                                                         padx=14, pady=(0, 4))
 
         # 主区只有一列：三步操作 → 结果表 → 选中详情条 → 日志抽屉。
         # 右侧栏取消了：它占的 270px 还给了结果表（7 列要 956px，原来只给到
@@ -239,19 +248,6 @@ class App:
         if title:
             tk.Label(f, text=title, bg=theme.C_CARD, fg=theme.C_SUB,
                      font=(theme.FONT, 10, 'bold')).pack(anchor='w', padx=theme.S4, pady=(theme.S2 + 1, 0))
-        return f
-
-    def _step_badge(self, parent, n: int):
-        """标了编号的小圆点：① 选文件夹 ② 开始识别 ③ 核对并改名。
-
-        用户不用记「下一步点哪里」——编号本身就在告诉他顺序。
-        """
-        f = tk.Frame(parent, bg=theme.C_CARD)
-        c = tk.Canvas(f, width=18, height=18, bg=theme.C_CARD, highlightthickness=0)
-        c.create_oval(1, 1, 17, 17, fill=theme.C_ACCENT_L, outline='')
-        c.create_text(9, 9, text=str(n), fill=theme.C_ACCENT,
-                      font=(theme.FONT, 9, 'bold'))
-        c.pack()
         return f
 
     def _build_head(self):
@@ -288,7 +284,7 @@ class App:
 
         原来是四行控件，而第三步「核对并改名」藏在「⋯更多」菜单里——可它恰恰
         是识别完必点的动作，藏菜单里等于让用户去猜。现在三步竖排在界面上，
-        编号写在前面；处理范围的勾选搬进设置窗口（常用第一组），这一屏只留三步。
+        顺序本身就是引导；处理范围的勾选搬进设置窗口（常用第一组），这一屏只留三步。
         """
         card = self._card(parent)
         card.pack(fill='x')
@@ -298,9 +294,8 @@ class App:
         # —— 第 1 步：文件夹（右边「浏览… / 预设」先占位，窄窗口也不会被挤出去）
         r1 = tk.Frame(inner, bg=theme.C_CARD)
         r1.pack(fill='x')
-        self._step_badge(r1, 1).pack(side='left')
         tk.Label(r1, text=T('文件夹'), bg=theme.C_CARD, fg=theme.C_TEXT,
-                 font=(theme.FONT, 10)).pack(side='left', padx=(7, 9))
+                 font=(theme.FONT, 10)).pack(side='left', padx=(0, 9))
         self._preset_disp = {T(k): k for k in engine.PRESETS}
         self.var_preset = tk.StringVar(value='')
         # 没有预设时不建这个下拉，免得显示一个空框
@@ -323,10 +318,9 @@ class App:
         # —— 第 2 步：开始识别（进度条与状态灯并到同一行，省下整整一行高度）
         r2 = tk.Frame(inner, bg=theme.C_CARD)
         r2.pack(fill='x', pady=(11, 0))
-        self._step_badge(r2, 2).pack(side='left')
         self.btn_go = ttk.Button(r2, text=T('▶ 开始识别'), style='Go.TButton',
                                  command=self.on_go)
-        self.btn_go.pack(side='left', padx=(7, 0))
+        self.btn_go.pack(side='left')
         self.btn_stop = ttk.Button(r2, text=T('停止识别'), style='Sec.TButton',
                                    width=theme.button_width(10, 9), command=self.on_stop,
                                    state='disabled')
@@ -345,11 +339,10 @@ class App:
         #    目录里有上次的计划表时也可点，不用先跑一遍。
         r3 = tk.Frame(inner, bg=theme.C_CARD)
         r3.pack(fill='x', pady=(11, 0))
-        self._step_badge(r3, 3).pack(side='left')
         self.btn_plan = ttk.Button(r3, text=T('核对并改名…'), style='Sec.TButton',
                                    command=self.open_plan, state='disabled',
                                    width=theme.button_width(11, 13))
-        self.btn_plan.pack(side='left', padx=(7, 0))
+        self.btn_plan.pack(side='left')
         # 「这次会处理什么」的说明靠右：一眼看到范围，不用再去翻设置
         self.lbl_scope = tk.Label(r3, text='', bg=theme.C_CARD, fg=theme.C_SUB,
                                   font=(theme.FONT, 9), anchor='e', justify='right')
@@ -755,6 +748,14 @@ class App:
         tk.Label(bar, text=(APP_VER if APP_VER.startswith('v') else 'v' + APP_VER),
                  bg=theme.C_BAR, fg=theme.C_HINT,
                  font=(theme.FONT, 8)).pack(side='right', padx=(0, 14), pady=5)
+        # 地名数据署名：原来是状态栏上面单独一行的浅灰小字，白占一行高度。
+        # 现在缩到版本号左边同一行，全文放悬浮提示里。
+        self.lbl_credit = tk.Label(
+            bar, text=T('地名数据 © OpenStreetMap · GeoNames'),
+            bg=theme.C_BAR, fg=theme.C_HINT, font=(theme.FONT, 8))
+        self.lbl_credit.pack(side='right', padx=(0, 10), pady=5)
+        Hover(self.lbl_credit, lambda: T(
+            '地名数据 © OpenStreetMap 贡献者（ODbL）· 全球城市 GeoNames（CC-BY 4.0）'))
 
     # ------------------------------------------------------------ 日志
     def log(self, s, tag=None):

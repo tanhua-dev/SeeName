@@ -614,6 +614,13 @@ EN.update({
         'This directory has no rename records yet.\nThe ledger is created after you click "Apply renames" in the review window.',
     '地名数据 © OpenStreetMap 贡献者（ODbL）· 全球城市 GeoNames（CC-BY 4.0）':
         'Place data (c) OpenStreetMap contributors (ODbL) - worldwide cities from GeoNames (CC-BY 4.0)',
+    '地名数据 © OpenStreetMap · GeoNames':
+        'Place data (c) OpenStreetMap - GeoNames',
+    # ↓ v2.0 首次运行按硬件自动启用加速
+    '检测到已装好的 %s 组件，已自动启用显卡加速':
+        'Found an installed %s component - GPU acceleration enabled',
+    '本地推理库已就绪 · %s':
+        'Local inference ready - %s',
 })
 
 EN.update({
