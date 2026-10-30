@@ -30,9 +30,12 @@ class PlanDialog(tk.Toplevel):
 
     PAGE_SIZES = (50, 100, 300)
 
-    def __init__(self, master, directory, items):
+    def __init__(self, master, directory, items, on_rollback=None):
         super().__init__(master)
         self.directory = directory
+        # 「回滚本目录改名」原来在 ⋯更多 菜单里：它只在这个目录改过名后才有意义，
+        # 和这张核对表天然是一件事，所以搬进这里的页脚。
+        self.on_rollback = on_rollback
         self.items = [dict(x) for x in items]
         # rows 是全部数据（dict，不是控件）；frame 只在当前页存在
         self.rows: list[dict] = []
@@ -95,12 +98,24 @@ class PlanDialog(tk.Toplevel):
         foot.pack(fill='x', padx=14, pady=12)
         ttk.Button(foot, text=T('查找替换…'), style='Sec.TButton', width=theme.button_width(12, 18),
                    command=self.open_replace).pack(side='left')
-        tk.Label(foot, text=T('改名后想还原：主界面点「回滚本目录改名」。'),
+        if self.on_rollback is not None:
+            # 放左边、用次要样式：这是「撤回」动作，不能和主按钮抢位置
+            ttk.Button(foot, text=T('回滚本目录改名…'), style='Sec.TButton',
+                       width=theme.button_width(15, 18),
+                       command=self._rollback).pack(side='left', padx=(10, 0))
+        tk.Label(foot, text=T('时间留空的行不会被改名，原文件保持不动。'),
                  bg=theme.C_BG, fg=theme.C_SUB, font=(theme.FONT, 9)).pack(side='left', padx=(12, 0))
         ttk.Button(foot, text=T('应用改名'), style='Go.TButton',
                    command=self.on_apply).pack(side='right')
         ttk.Button(foot, text=T('暂不改名，关闭'), style='Sec.TButton', width=theme.button_width(14, 18),
                    command=self.on_cancel).pack(side='right', padx=(0, 10))
+
+    def _rollback(self):
+        """先关窗再回滚：文件名会全部变回去，这张表随即作废。"""
+        if self.on_rollback is None:
+            return
+        self.on_cancel()
+        self.on_rollback()
 
     def open_replace(self):
         """散落在不相邻行里的同一个错名，用查找替换一次换掉。"""

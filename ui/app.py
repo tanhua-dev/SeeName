@@ -70,10 +70,12 @@ class App:
         self.var_amap = tk.StringVar(value=str(cfg.get('amap_key') or ''))
         self.var_geolv = tk.StringVar(
             value=T('到街道') if cfg.get('geo_level') == 'street' else T('到区县'))
+        # 默认「简洁」：只改名，不多出任何文件。想要 .ai.txt / 目录说明.md /
+        # 元数据的用户去设置里切到「详细」（细项在高级里）。
         self.var_meta = tk.BooleanVar(
-            value=metadata_writing_enabled() and self._sw('write_meta', True))
-        self.var_txt = tk.BooleanVar(value=self._sw('write_txt', True))
-        self.var_md = tk.BooleanVar(value=self._sw('write_md', True))
+            value=metadata_writing_enabled() and self._sw('write_meta', False))
+        self.var_txt = tk.BooleanVar(value=self._sw('write_txt', False))
+        self.var_md = tk.BooleanVar(value=self._sw('write_md', False))
         self.var_lang = tk.StringVar(
             value=T('中文') if strings.lang() == 'zh' else 'English')
         # 处理范围的四个勾选：原来住在主界面第二行，现在搬进设置窗口的「常用」
@@ -800,7 +802,9 @@ class App:
                     APP_TITLE,
                     T('还没有识别结果。先点「开始识别」，跑完会自动打开这个窗口。'))
             return
-        dlg = PlanDialog(self.root, d, items)
+        # 回滚入口从 ⋯更多 菜单挪进核对窗口：它只在「这个目录改过名」时才有意义，
+        # 和这张表天然是一起的，也不用再放一个随时灰着的菜单项。
+        dlg = PlanDialog(self.root, d, items, on_rollback=self.on_rollback)
         self.root.wait_window(dlg)      # 注意：PlanDialog 本身就是 Toplevel，没有 .top
         if dlg.applied:
             done, failed, skipped = dlg.applied
@@ -811,7 +815,7 @@ class App:
             # 改名后目录说明.md 里的文件名全变了：拿新名字重写一份
             # （元数据和 .ai.txt 写在文件本身/跟着文件走，不用重做）
             try:
-                if bool((engine.config() or {}).get('write_md', True)):
+                if bool((engine.config() or {}).get('write_md', False)):
                     engine.finalize(d, engine.load_plan(d), write_meta=False,
                                     write_txt=False, write_md=True)
             except Exception:
@@ -975,7 +979,7 @@ class App:
             if items:
                 engine.save_plan(d, items)
                 # 文件名都回到原名了，目录说明.md 也按原名重写一份
-                if bool((engine.config() or {}).get('write_md', True)):
+                if bool((engine.config() or {}).get('write_md', False)):
                     engine.finalize(d, items, write_meta=False,
                                     write_txt=False, write_md=True)
         except Exception:
@@ -1402,15 +1406,17 @@ class App:
         self.log(T('自检：改名结果窗口构建正常'), 'ok')
         rd.on_close()
         self._refresh_plan_btn()
-        # —— v3.22：AI 描述总开关 ——
+        # —— v3.22：AI 描述总开关（勾选框已搬进设置窗口，窗口没开时只校验变量联动）——
         try:
             _ai0 = bool(self.var_ai_desc.get())
             self.var_ai_desc.set(False)
             self._refresh_scope()
-            _off_grey = 'disabled' in self.cb_desc_photo.state()
+            _off_grey = (self.cb_desc_photo is None
+                         or 'disabled' in self.cb_desc_photo.state())
             self.var_ai_desc.set(True)
             self._refresh_scope()
-            _on_live = 'disabled' not in self.cb_desc_photo.state()
+            _on_live = (self.cb_desc_photo is None
+                        or 'disabled' not in self.cb_desc_photo.state())
             self.var_ai_desc.set(_ai0)
             self._refresh_scope()
             self.log(T('自检：AI 描述开关构建正常'),

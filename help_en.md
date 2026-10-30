@@ -19,7 +19,7 @@ Video probing and frame extraction use PyAV in-process and need no FFmpeg execut
    - `AI description` is on by default: with it off, neither videos nor photos go through the model — files are named by `capture time + place` only, and the run finishes in seconds.
    - `Write content description for photos` is on by default: each photo spends additional CPU time with the model and comes back with a description like "cat close-up". Untick it for a fast pass that only reads time and GPS. It is a sub-option of `AI description` and is greyed out when the master switch is off.
 3. **Click `▶ Start recognition`**: when the progress bar finishes, results appear in the `Results` table below.
-   - To actually rename files: bottom-right `⋯ More` → `Review and rename…` → check, then click `Apply rename`.
+   - To actually rename files: click `Review and rename…` (step 3) → check the table, then `Apply rename`.
    - To just preview: stop here. **Nothing is renamed until you click `Apply rename`.**
 
 If no local models are found, Model manager offers downloads of 4B / 2B Q4 / Q8 pairs from Hugging Face or ModelScope, with cancellation, resume and SHA-256 verification. Existing directories remain supported. Default roots: Windows `%LOCALAPPDATA%\SeeName\models`, macOS `~/Library/Application Support/SeeName/models`, Linux `${XDG_DATA_HOME:-~/.local/share}/SeeName/models`; pairs live in `Qwen3-VL-4B-Instruct-GGUF` / `Qwen3-VL-2B-Instruct-GGUF` subdirectories. A custom model directory also becomes the download target. Uses in-process llama.cpp on CPU, without Ollama.
@@ -33,10 +33,10 @@ Models load when recognition starts, or when you click the status indicator. Cha
 - **`▶ Start recognition`**: starts the run. While it runs, `Stop recognition` appears next to it; clicking it stops after the current file, and everything already done is kept.
 - **Progress bar + status light**: the light on the right reads `● Not started`, `● Recognizing…`, `● Stopping…`, `● Stopped manually · x/y done` or `● Done · x items`.
 - **Results table**: columns are `#`, `Original name`, `New name`, `Place`, `Description`, `Time`, `Status`. Below it are `Copy all` and `Clear`.
-- **Right sidebar**: only `What the model sees` (the image actually sent to the model). Click `»` at the top right to collapse it; collapsed, only a `⚙` remains — click that to open settings.
+- **Selected-row strip** (under the table): click a row and it shows the thumbnail (the image the model actually saw), `original → new` and the place/time taken. When a name is clipped in the table, this is where you read it in full.
 - **`⚙ Settings`** (top right of the window): every option lives on this one page — recognition, models, place lookup, output, GPU acceleration, language. Changes save immediately. Checkboxes are a box with a tick, and the whole row is clickable.
 - **Bottom status bar**: model readiness/loading/error state, then `llama.cpp · CPU`, then the model directory. Click the status to load in advance; hover for errors or full paths.
-- **`⋯ More`** (bottom right): `Review and rename…`, `Roll back renames in this folder`, `Open this folder`, `Open recognition report`, `Open rename ledger`, `Model manager…`, `About`, and the run-log toggle.
+- **`⚙ Settings`** (top right): two sections — `Common` holds just three groups (scope, model, save mode); everything technical is folded under `Advanced settings`. Changes save instantly, no OK button.
 - **`▸ Run log`**: expands to show details for each file. It opens by itself when something goes wrong.
 
 ## 4. Every setting, explained
@@ -56,7 +56,7 @@ Models load when recognition starts, or when you click the status indicator. Cha
 
 ## 5. After recognition: review, rename, roll back
 
-Open `⋯ More` → `Review and rename…`. The big table has columns `Original name`, `Capture time`, `Place`, `Description`, `Resulting new name`:
+Click `Review and rename…` (step 3). The big table has columns `Original name`, `Capture time`, `Place`, `Description`, `Resulting new name`:
 
 - Time, place and description are **editable**; the new name below updates as you type.
 - Leaving time empty means this file is not renamed.
@@ -67,7 +67,7 @@ Open `⋯ More` → `Review and rename…`. The big table has columns `Original 
 - Click `Apply rename` to actually rename; `Close without renaming` leaves files alone.
 - After renaming, a result window appears where you can `Copy list` or open the rename ledger.
 
-**Renamed something by mistake?** `⋯ More` → `Roll back renames in this folder` restores the batch using the ledger. This relies on the ledger, so if you later renamed those files yourself by hand it can no longer find them — back up before a large batch.
+**Renamed something by mistake?** `Roll back renames in this folder…` sits at the bottom left of the review window and restores the batch using the ledger. This relies on the ledger, so if you later renamed those files yourself by hand it can no longer find them — back up before a large batch.
 
 ## 6. FAQ
 

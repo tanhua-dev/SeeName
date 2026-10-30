@@ -225,11 +225,26 @@ class CheckRow(tk.Frame):
             w.bind('<Button-1>', self._toggle)
             w.bind('<Enter>', self._hover_in)
             w.bind('<Leave>', self._hover_out)
+        # 变量是全局的（设置窗口关掉后主窗口还在写它），所以窗口销毁时必须解绑，
+        # 否则下次改设置会调到已经销毁的控件上，控制台刷一串 TclError。
+        self._trace = None
         try:
-            variable.trace_add('write', lambda *a: self._draw())
+            self._trace = variable.trace_add('write', lambda *a: self._draw())
+            self.bind('<Destroy>', self._drop_trace)
         except Exception:
             pass
         self._draw()
+
+    def _drop_trace(self, event=None):
+        if event is not None and getattr(event, 'widget', None) is not self:
+            return          # 子控件销毁也会冒泡上来，只处理自己
+        if not self._trace:
+            return
+        try:
+            self.var.trace_remove('write', self._trace)
+        except Exception:
+            pass
+        self._trace = None
 
     # 状态
     def _on(self) -> bool:
@@ -347,11 +362,24 @@ class ChoiceRow(tk.Frame):
             b.bind('<Enter>', lambda e, w=b: self._hover(w, True))
             b.bind('<Leave>', lambda e, w=b: self._hover(w, False))
             self._buttons.append((b, value))
+        self._trace = None
         try:
-            variable.trace_add('write', lambda *a: self._paint())
+            self._trace = variable.trace_add('write', lambda *a: self._paint())
+            self.bind('<Destroy>', self._drop_trace)
         except Exception:
             pass
         self._paint()
+
+    def _drop_trace(self, event=None):
+        if event is not None and getattr(event, 'widget', None) is not self:
+            return
+        if not self._trace:
+            return
+        try:
+            self.var.trace_remove('write', self._trace)
+        except Exception:
+            pass
+        self._trace = None
 
     def _pick(self, value):
         if not self._enabled:

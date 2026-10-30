@@ -961,3 +961,51 @@ EN.update({
         ' · tight; use Vulkan for the 4B model (or close VRAM-heavy apps first)',
     ' · 不足，建议用 Vulkan': ' · too little; use Vulkan',
 })
+
+
+# ---- 三步主界面 / 设置两段式（⋯更多 拆掉之后的文案）----
+EN.update({
+    '文件夹': 'Folder',
+    '核对并改名…': 'Review and rename…',
+    '无预览': 'No preview',
+    '打开目录': 'Open folder',
+    '识别报告': 'Report',
+    '改名台账': 'Rename ledger',
+    '点表格里的一行，这里显示它的原名和新名':
+        'Click a row — its original and new name show up here',
+    '选中后这里显示地名、耗时和失败原因':
+        'Place, elapsed time and the failure reason appear here',
+    '（时间空白，不改名）': '(no time — left as is)',
+    '失败：%s': 'Failed: %s',
+    '%d 帧 / %d token': '%d frames / %d tokens',
+    '上次识别留下的，没有更多细节）': 'from the last run, no further detail)',
+    '设置 · %s': 'Settings · %s',
+    '常用': 'Common',
+    '上面三项改完就够用；技术项都在「高级」里，不看也不影响。':
+        'The three groups above cover everyday use; technical options live under Advanced.',
+    '保存方式': 'Save mode',
+    '结果怎么留': 'What to keep',
+    '简洁': 'Simple',
+    '详细': 'Detailed',
+    '只改文件名，不多出一个文件。想留说明书再切到「详细」。':
+        'Renames only — no extra files. Switch to Detailed if you want the notes.',
+    '改名，并留下 .ai.txt 摘要和「目录说明.md」，照片/视频还会写入元数据。':
+        'Renames and keeps a .ai.txt summary plus folder-notes.md; photos and videos also get metadata.',
+    '▸ 高级设置': '▸ Advanced settings',
+    '▾ 高级设置': '▾ Advanced settings',
+    '抽帧数 · 定位 · 元数据 · GPU 加速 · 语言':
+        'frame count · location · metadata · GPU · language',
+    '识别结果怎么保存（细项）': 'How results are saved (details)',
+    '上面「保存方式」就是这三项的总开关；这里可以单独挑。'
+    '元数据写进文件本身（照片 EXIF/XMP、视频容器标签），拷到哪都带着走。':
+        'Save mode above is the master switch for these three; pick them individually here. '
+        'Metadata goes inside the file itself (EXIF/XMP for photos, container tags for videos).',
+    '关于': 'About',
+    '回滚本目录改名…': 'Roll back renames…',
+    '时间留空的行不会被改名，原文件保持不动。':
+        'Rows with an empty time are not renamed — those files stay untouched.',
+    '第 3 步「核对并改名」可用/置灰切换 %s': 'step 3 enable/disable toggle %s',
+    '选中详情条首行 = %r': 'detail strip first line = %r',
+    '⋯更多菜单与右侧栏已移除，入口改为第 3 步 + 表格标题行':
+        'the More menu and the sidebar are gone — entry points are step 3 and the table header',
+})

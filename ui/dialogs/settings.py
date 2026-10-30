@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""One settings window for everything — the app stays two levels deep.
+"""One settings window, split into「常用」and「高级」.
 
-Before this module the settings lived at the bottom of the right sidebar, below
-the preview card: on a small window they ended up in the far bottom-right corner,
-had to be scrolled to, and the deeper options (model manager, GPU acceleration)
-opened windows on top of that. Now: main window → this window → nothing.
+The window is the only place settings live now (the right sidebar is gone — its
+270px went back to the result table, which needs 956px for all seven columns).
+Two levels deep at most: main window → this window → nothing else.
 
-Every control here is a big-target control from :mod:`ui.controls`, so check
-states and choices are readable at a glance.
+Layout rule: whatever a first-time user needs is in 常用 and visible without
+scrolling; everything technical is folded under 高级. Nothing is hidden behind a
+third window — model manager switches sideways, GPU acceleration is inline.
 """
 from __future__ import annotations
 
@@ -36,31 +36,38 @@ class SettingsDialog(tk.Toplevel):
         head.pack(fill='x', padx=theme.S4, pady=(theme.S3, theme.S2))
         tk.Label(head, text=T('⚙ 设置'), bg=theme.C_BG, fg=theme.C_TEXT,
                  font=(theme.FONT, 15, 'bold')).pack(anchor='w')
-        tk.Label(head, text=T('改动立刻保存，不用点确定。'), bg=theme.C_BG,
-                 fg=theme.C_SUB, font=(theme.FONT, 9)).pack(anchor='w', pady=(2, 0))
+        tk.Label(head, text=T('上面三项改完就够用；技术项都在「高级」里，不看也不影响。'),
+                 bg=theme.C_BG, fg=theme.C_SUB, font=(theme.FONT, 9)).pack(anchor='w', pady=(2, 0))
 
         scroll = ScrollArea(self, bg=theme.C_BG, width=600)
         scroll.pack(fill='both', expand=True, padx=(theme.S4, theme.S2))
         body = scroll.inner
+
+        self._group(body, T('常用'))
         self._build_scope(body)
-        self._build_detect(body)
         self._build_model(body)
-        self._build_geo(body)
-        self._build_output(body)
-        self._build_accel(body)
-        self._build_lang(body)
+        self._build_save(body)
+
+        self._build_advanced(body)
         scroll.bind_wheel()
         self._scroll = scroll
 
         foot = tk.Frame(self, bg=theme.C_BG)
         foot.pack(fill='x', padx=theme.S4, pady=theme.S3)
         ttk.Button(foot, text=T('模型管理…'), command=self.open_models).pack(side='left')
+        ttk.Button(foot, text=T('关于'), style='Link.TButton',
+                   command=lambda: app.open_about()).pack(side='left', padx=(10, 0))
         ttk.Button(foot, text=T('关闭'), command=self.on_close).pack(side='right')
 
         fit_to_content(self, design_w=720, design_h=700, min_w=640, min_h=520)
         self.refresh()
 
-    # ---------------------------------------------------------------- 卡片
+    # ---------------------------------------------------------------- 版式
+    def _group(self, parent, title):
+        """分组标题：常用 / 高级之间的一道视觉分隔。"""
+        tk.Label(parent, text=title, bg=theme.C_BG, fg=theme.C_SUB,
+                 font=(theme.FONT, 11, 'bold')).pack(anchor='w', pady=(0, theme.S1))
+
     def _card(self, parent, title):
         card = tk.Frame(parent, bg=theme.C_CARD, highlightbackground=theme.C_LINE,
                         highlightthickness=1)
@@ -79,13 +86,13 @@ class SettingsDialog(tk.Toplevel):
                        wraplength=kw.pop('wraplength', 540), **kw)
         return lab
 
-    # ---------------------------------------------------------------- 范围
+    # ---------------------------------------------------------------- 处理范围
     def _build_scope(self, body):
         """处理范围：从主界面第二行搬过来的四个勾选。
 
         主界面现在只有三步，勾选挤在那里会让人先看见一堆开关再看见「开始识别」。
-        搬进设置后主界面干净了，而范围说明仍在主界面第 3 步右侧实时显示（见
-        App._refresh_scope），改完立刻能看到会发生什么。
+        搬进设置后主界面干净了，而范围说明仍在主界面第 3 步右侧实时显示
+        （见 App._refresh_scope），改完立刻能看到会发生什么。
         """
         card = self._card(body, T('处理范围'))
         app = self.app
@@ -122,6 +129,115 @@ class SettingsDialog(tk.Toplevel):
         self.lbl_scope.pack(fill='x', pady=(2, 0))
         scope_changed()
 
+    # ---------------------------------------------------------------- 模型
+    def _build_model(self, body):
+        card = self._card(body, T('模型'))
+        app = self.app
+        row = tk.Frame(card, bg=theme.C_CARD)
+        row.pack(fill='x')
+        tk.Label(row, text=T('当前模型'), bg=theme.C_CARD, fg=theme.C_TEXT,
+                 font=(theme.FONT, 10)).pack(side='left', padx=(0, theme.S2))
+        self.btn_model = ttk.Button(row, text=T('模型管理…'), command=self.open_models)
+        self.btn_model.pack(side='right')
+        app.btn_model = self.btn_model
+        app.cb_model = ttk.Combobox(
+            row, textvariable=app.var_model, state='readonly', width=26,
+            values=[item['name'] for item in engine.MODEL_CATALOG])
+        app.cb_model.pack(side='right', padx=(0, theme.S2), fill='x', expand=True)
+        app.cb_model.bind('<<ComboboxSelected>>',
+                          lambda e: app.choose_model(app.var_model.get()))
+        self._hint(card, T('主模型和配套 mmproj 要放在同一目录；点「模型管理」可以下载 4B / 2B 模型。')).pack(
+            fill='x', pady=(theme.S1, 0))
+
+    # ---------------------------------------------------------------- 保存方式
+    def _build_save(self, body):
+        """把「写元数据 / .ai.txt / 目录说明.md」三个开关合成一个二选一。
+
+        三个开关各管一件事，对第一次用的人是三行看不懂的技术名词；而实际选择
+        只有两种：要么只改名（干净），要么连说明文件一起留（完整）。细项仍在
+        高级里，想单独调的人照样能调。
+        """
+        card = self._card(body, T('保存方式'))
+        app = self.app
+        self.var_save = tk.StringVar(value=self._save_mode())
+        self.choice_save = ChoiceRow(
+            card, T('结果怎么留'),
+            [(T('简洁'), T('简洁')), (T('详细'), T('详细'))],
+            self.var_save, command=self._on_save_mode)
+        self.choice_save.pack(fill='x')
+        self.lbl_save = self._hint(card, '')
+        self.lbl_save.pack(fill='x', pady=(2, 0))
+        self._paint_save()
+
+    def _save_mode(self) -> str:
+        app = self.app
+        detailed = bool(app.var_txt.get() or app.var_md.get() or app.var_meta.get())
+        return T('详细') if detailed else T('简洁')
+
+    def _on_save_mode(self, *a):
+        detailed = (self.var_save.get() == T('详细'))
+        app = self.app
+        for key, var in (('write_txt', app.var_txt), ('write_md', app.var_md)):
+            var.set(detailed)
+            app._save_sw(key, var)
+        if metadata_writing_enabled():
+            app.var_meta.set(detailed)
+            app._save_sw('write_meta', app.var_meta)
+        self._paint_save()
+
+    def _paint_save(self):
+        if self.var_save.get() == T('详细'):
+            text = T('改名，并留下 .ai.txt 摘要和「目录说明.md」，照片/视频还会写入元数据。')
+        else:
+            text = T('只改文件名，不多出一个文件。想留说明书再切到「详细」。')
+        self.lbl_save.configure(text=text)
+
+    # ---------------------------------------------------------------- 高级
+    def _build_advanced(self, body):
+        """高级设置默认折叠：打开软件先看到的三格里没有一项技术名词。"""
+        try:
+            opened = bool((engine.config() or {}).get('adv_open', False))
+        except Exception:
+            opened = False
+        self.var_adv = tk.BooleanVar(value=opened)
+
+        bar = tk.Frame(body, bg=theme.C_BG)
+        bar.pack(fill='x', pady=(theme.S2, theme.S1))
+        self.btn_adv = ttk.Button(bar, text='', style='Sec.TButton',
+                                  command=self._toggle_adv)
+        self.btn_adv.pack(side='left')
+        tk.Label(bar, text=T('抽帧数 · 定位 · 元数据 · GPU 加速 · 语言'),
+                 bg=theme.C_BG, fg=theme.C_HINT,
+                 font=(theme.FONT, 9)).pack(side='left', padx=(10, 0))
+
+        self.adv = tk.Frame(body, bg=theme.C_BG)
+        self._build_detect(self.adv)
+        self._build_geo(self.adv)
+        self._build_output(self.adv)
+        self._build_accel(self.adv)
+        self._build_lang(self.adv)
+        self._apply_adv(opened)
+
+    def _apply_adv(self, opened: bool):
+        """展开/收起高级区。只改界面，不写盘。"""
+        self.var_adv.set(bool(opened))
+        try:
+            if opened:
+                self.adv.pack(fill='x', pady=(theme.S2, 0))
+            else:
+                self.adv.pack_forget()
+            self.btn_adv.configure(text=(T('▾ 高级设置') if opened else T('▸ 高级设置')))
+        except Exception:
+            pass
+
+    def _toggle_adv(self):
+        opened = not bool(self.var_adv.get())
+        self._apply_adv(opened)
+        try:
+            engine.save_config(adv_open=opened)
+        except Exception:
+            pass
+
     # ---------------------------------------------------------------- 识别
     def _build_detect(self, body):
         card = self._card(body, T('识别'))
@@ -150,26 +266,6 @@ class SettingsDialog(tk.Toplevel):
         self._hint(card, T('不勾选时，名字已经是「视/图 + 日期」格式的文件会跳过。')).pack(
             fill='x', pady=(2, 0))
 
-    # ---------------------------------------------------------------- 模型
-    def _build_model(self, body):
-        card = self._card(body, T('模型'))
-        app = self.app
-        row = tk.Frame(card, bg=theme.C_CARD)
-        row.pack(fill='x')
-        tk.Label(row, text=T('当前模型'), bg=theme.C_CARD, fg=theme.C_TEXT,
-                 font=(theme.FONT, 10)).pack(side='left', padx=(0, theme.S2))
-        self.btn_model = ttk.Button(row, text=T('模型管理…'), command=self.open_models)
-        self.btn_model.pack(side='right')
-        app.btn_model = self.btn_model
-        app.cb_model = ttk.Combobox(
-            row, textvariable=app.var_model, state='readonly', width=26,
-            values=[item['name'] for item in engine.MODEL_CATALOG])
-        app.cb_model.pack(side='right', padx=(0, theme.S2), fill='x', expand=True)
-        app.cb_model.bind('<<ComboboxSelected>>',
-                          lambda e: app.choose_model(app.var_model.get()))
-        self._hint(card, T('主模型和配套 mmproj 要放在同一目录；点「模型管理」可以下载 4B / 2B 模型。')).pack(
-            fill='x', pady=(theme.S1, 0))
-
     # ---------------------------------------------------------------- 定位
     def _build_geo(self, body):
         card = self._card(body, T('地名与定位'))
@@ -197,9 +293,9 @@ class SettingsDialog(tk.Toplevel):
             app.var_geolv, command=app._on_geolv)
         self.choice_geolv.pack(fill='x')
 
-    # ---------------------------------------------------------------- 输出
+    # ---------------------------------------------------------------- 输出细项
     def _build_output(self, body):
-        card = self._card(body, T('识别结果怎么保存'))
+        card = self._card(body, T('识别结果怎么保存（细项）'))
         app = self.app
         self.check_meta = CheckRow(card, T('写入文件元数据'), app.var_meta,
                                    command=lambda: app._save_sw('write_meta', app.var_meta),
@@ -216,8 +312,9 @@ class SettingsDialog(tk.Toplevel):
                                  command=lambda: app._save_sw('write_md', app.var_md),
                                  bg=theme.C_CARD)
         self.check_md.pack(fill='x', pady=(theme.S1, 0))
-        self._hint(card, T('三个开关各管一件事，关掉就不做。元数据写进文件本身（照片 EXIF/XMP、视频容器标签），'
-                           '文件拷到哪里都带着走。')).pack(fill='x', pady=(theme.S2, 0))
+        self._hint(card, T('上面「保存方式」就是这三项的总开关；这里可以单独挑。'
+                           '元数据写进文件本身（照片 EXIF/XMP、视频容器标签），拷到哪都带着走。')).pack(
+            fill='x', pady=(theme.S2, 0))
 
     # ---------------------------------------------------------------- 加速
     def _build_accel(self, body):
@@ -242,8 +339,8 @@ class SettingsDialog(tk.Toplevel):
         busy = bool(self.app.running or self.app._model_busy)
         for widget in (self.choice_frames, self.check_all, self.choice_geolv,
                        self.check_netgeo, self.check_txt, self.check_md,
-                       self.choice_lang, self.app.cb_ai_desc, self.app.cb_video,
-                       self.app.cb_photos):
+                       self.choice_lang, self.choice_save, self.app.cb_ai_desc,
+                       self.app.cb_video, self.app.cb_photos):
             try:
                 widget.set_enabled(not busy)
             except Exception:
@@ -262,6 +359,12 @@ class SettingsDialog(tk.Toplevel):
                 pass
         try:
             self.panel.refresh()
+        except Exception:
+            pass
+        # 高级里的细项被改过（比如在别处切了保存方式）时，二选一要跟着走
+        try:
+            self.var_save.set(self._save_mode())
+            self._paint_save()
         except Exception:
             pass
 
