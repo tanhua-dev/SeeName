@@ -11,6 +11,7 @@ import engine
 from strings import T
 from .. import theme
 from ..common import APP_TITLE, cut, open_path
+from ..controls import fit_window
 
 
 class PlanDialog(tk.Toplevel):
@@ -41,8 +42,7 @@ class PlanDialog(tk.Toplevel):
         self.applied = None     # (done, failed, skipped)
         self.detail = None      # 改名明细：谁改成了什么、谁失败、谁被跳过
         self.title(T('核对并改名 · %s') % APP_TITLE)
-        self.geometry('1200x700')
-        self.minsize(900, 460)
+        fit_window(self, 1180, 700, min_w=900, min_h=460)
         self.configure(bg=theme.C_BG)
         self.transient(master)
         self.grab_set()
@@ -504,8 +504,7 @@ class ReplaceDialog(tk.Toplevel):
         self.rows = rows
         self.n_done = 0
         self.title(T('查找替换 · %s') % APP_TITLE)
-        self.geometry('520x300')
-        self.minsize(460, 260)
+        fit_window(self, 520, 320, min_w=460, min_h=260)
         self.configure(bg=theme.C_BG)
         self.transient(master)
         self.grab_set()
@@ -644,8 +643,7 @@ class RenameResultDialog(tk.Toplevel):
         done, failed, skipped = (self.detail.get('counts')
                                  or (len(ok), len(bad), len(skip)))
         self.title(T('改名结果 · %s') % APP_TITLE)
-        self.geometry('760x480')
-        self.minsize(560, 340)
+        fit_window(self, 760, 480, min_w=560, min_h=340)
         self.configure(bg=theme.C_BG)
         self.transient(master)
         self.grab_set()

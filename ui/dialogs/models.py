@@ -50,7 +50,7 @@ class ModelDialog(tk.Toplevel):
         self.transient(master)
         self.protocol('WM_DELETE_WINDOW', self.on_close)
         self._build()
-        fit_to_content(self, min_w=780, min_h=560)
+        fit_to_content(self, design_w=800, design_h=620, min_w=700, min_h=520)
         self.refresh()
 
     # ---------------------------------------------------------------- 构建

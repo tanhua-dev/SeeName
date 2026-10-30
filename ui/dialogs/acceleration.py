@@ -434,7 +434,7 @@ class AccelerationDialog(tk.Toplevel):
         self.panel = AccelerationPanel(self, app, bg=theme.C_BG)
         self.panel.pack(fill='both', expand=True, padx=theme.S4, pady=theme.S4)
         ttk.Button(self, text=T('关闭'), command=self._close).pack(pady=(0, theme.S3))
-        fit_to_content(self, min_w=600, min_h=420)
+        fit_to_content(self, design_w=620, design_h=460, min_w=560, min_h=420)
         self.protocol('WM_DELETE_WINDOW', self._close)
 
     def refresh(self):

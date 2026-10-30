@@ -83,8 +83,9 @@ class App:
         self.settings_dlg = None
 
         root.title('%s %s' % (APP_TITLE, APP_VER))
-        root.geometry(self._saved_geometry('1120x760'))
-        root.minsize(940, 620)
+        root.geometry(self._saved_geometry(root))
+        _sw, _sh = self._work_area(root)
+        root.minsize(min(940, int(_sw * 0.86)), min(620, int(_sh * 0.86)))
         root.configure(bg=theme.C_BG)
         self._icons = []                # 防止图标 PhotoImage 被 GC
         p = asset_path('logo_round.png')
@@ -109,33 +110,39 @@ class App:
 
     # ------------------------------------------------------------ 窗口
     @staticmethod
-    def _work_area() -> tuple[int, int]:
-        """屏幕工作区（去掉任务栏等）。取不到就退回 1920x1080。"""
-        try:
-            import ctypes
-            import ctypes.wintypes as wt
-            ctypes.windll.user32.SetProcessDPIAware()
-            rc = wt.RECT()
-            if ctypes.windll.user32.SystemParametersInfoW(
-                    0x0030, 0, ctypes.byref(rc), 0):   # SPI_GETWORKAREA
-                return (max(800, rc.right - rc.left), max(600, rc.bottom - rc.top))
-        except Exception:
-            pass
-        return (1920, 1080)
+    def _work_area(win) -> tuple[int, int]:
+        """工作区尺寸，单位与 Tk 一致；取不到就退回 1920x1080。
+
+        以前这里用 SystemParametersInfoW + SetProcessDPIAware()，返回的是
+        物理像素（本机 5120x2160），而 Tk 用的是 3413x1440，两者混用会让
+        「按屏幕裁剪」全部失效。统一走 ui.controls.work_area。
+        """
+        from .controls import work_area
+        return work_area(win)
 
     @classmethod
-    def _saved_geometry(cls, default: str) -> str:
+    def _default_geometry(cls, win) -> str:
+        """1120x760 是 1080p 上的设计值：小屏按屏幕收缩，第一次打开居中。"""
+        sw, sh = cls._work_area(win)
+        w = max(940, min(1120, int(sw * 0.90)))
+        h = max(620, min(760, int(sh * 0.90)))
+        return '%dx%d+%d+%d' % (w, h, max(0, (sw - w) // 2),
+                                max(0, (sh - h) // 2 - 20))
+
+    @classmethod
+    def _saved_geometry(cls, win) -> str:
         """记住上次拉到多大的窗口（存在 config.json 的 geometry 里）。
 
         启动时按当前屏幕工作区裁剪：记住的尺寸若超过屏幕 80% 的宽或高，
-        就作废回退到默认值（1120x760）——否则窗口会被上次的尺寸撑成
-        接近全屏，多任务时不顺手。保存前也会裁剪，不会越存越大。
+        就作废回退到默认值——否则窗口会被上次的尺寸撑成接近全屏，
+        多任务时不顺手。保存前也会裁剪，不会越存越大。
         """
+        default = cls._default_geometry(win)
         try:
             g = (engine.config() or {}).get('geometry') or ''
             if re.match(r'^\d{3,5}x\d{3,5}([+-]\d{1,5}[+-]\d{1,5})?$', g):
                 w, h = (int(x) for x in g.split('+')[0].split('x'))
-                sw, sh = cls._work_area()
+                sw, sh = cls._work_area(win)
                 if (w > sw * 0.8 or h > sh * 0.8
                         or w > sw or h > sh):
                     return default
@@ -155,7 +162,7 @@ class App:
             g = self.root.geometry()
             m = re.match(r'^(\d+)x(\d+)', g)
             if m:
-                sw, sh = self._work_area()
+                sw, sh = self._work_area(self.root)
                 w = min(int(m.group(1)), sw)
                 h = min(int(m.group(2)), sh)
                 g = '%dx%d%s' % (w, h, g[len(m.group(0)):])

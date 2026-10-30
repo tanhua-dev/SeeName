@@ -56,7 +56,7 @@ class SettingsDialog(tk.Toplevel):
         ttk.Button(foot, text=T('模型管理…'), command=self.open_models).pack(side='left')
         ttk.Button(foot, text=T('关闭'), command=self.on_close).pack(side='right')
 
-        fit_to_content(self, min_w=700, min_h=760)
+        fit_to_content(self, design_w=720, design_h=700, min_w=640, min_h=520)
         self.refresh()
 
     # ---------------------------------------------------------------- 卡片

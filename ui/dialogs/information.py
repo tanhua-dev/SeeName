@@ -140,11 +140,9 @@ class HelpDialog(tk.Toplevel):
         self.title('%s　·　%s' % (T('使用说明'), APP_TITLE))
         self.configure(bg=theme.C_BG)
         self.transient(master)
-        # 尺寸跟着屏幕走：小屏上不再顶到屏幕外（原来是写死的 880x680）
-        from ..controls import work_area
-        sw, sh = work_area(self)
-        self.geometry('%dx%d' % (min(880, int(sw * 0.88)), min(680, int(sh * 0.86))))
-        self.minsize(620, 440)
+        # 880x680 是 1080p 上的设计值；小屏按比例缩，不再顶出屏幕
+        from ..controls import fit_window
+        fit_window(self, 880, 680, min_w=620, min_h=440)
 
         head = tk.Frame(self, bg=theme.C_BG)
         head.pack(fill='x', padx=16, pady=(12, 6))

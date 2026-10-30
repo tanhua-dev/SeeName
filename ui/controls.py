@@ -29,46 +29,115 @@ CRE = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 
 # --------------------------------------------------------------- 窗口尺寸
+# 设计基准：常规 1920x1080 显示器（去掉任务栏约 1040）。所有窗口的尺寸都按
+# 这个基准写死成"设计值"，再按实际屏幕等比收缩——小屏不溢出，超大屏不会
+# 拉成一整面墙。
+BASE_SCREEN = (1920, 1040)
+
+
 def work_area(win) -> tuple[int, int]:
-    """Screen work area (taskbar excluded); falls back to the screen size."""
+    """工作区尺寸，单位与 Tk 的 geometry/winfo 一致（DPI 缩放后的逻辑像素）。
+
+    两个坑，都在这里避掉：
+
+    1. **不能用 SystemParametersInfoW(SPI_GETWORKAREA)**。进程一旦
+       ``SetProcessDPIAware()``，它按物理像素作答：本机 3413x1440 的屏幕会
+       报成 5120x2160，而 Tk 的 geometry 用的是 3413x1440。混用后
+       「限制在屏幕 92%」形同虚设，居中坐标也算到屏幕外——窗口贴着屏幕
+       右下角冒出来就是这么来的。
+    2. **不能在这里 SetProcessDPIAware()**。窗口已经按 96dpi 建好了，此时
+       再宣布"本进程自己处理缩放"，Windows 就不再做位图拉伸，界面直接变糊。
+    """
     try:
-        import ctypes
-        import ctypes.wintypes as wt
-        ctypes.windll.user32.SetProcessDPIAware()
-        rc = wt.RECT()
-        if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rc), 0):
-            return (max(640, rc.right - rc.left), max(480, rc.bottom - rc.top))
+        sw = int(win.winfo_screenwidth())
+        sh = int(win.winfo_screenheight())
+    except Exception:
+        return BASE_SCREEN
+    if sw < 320 or sh < 240:          # 还没拿到真实屏幕
+        return BASE_SCREEN
+    # 任务栏高度 Tk 拿不到，按缩放比例折算 48dp
+    bar = 48
+    try:
+        scale = float(win.tk.call('tk', 'scaling')) / (96 / 72.0)
+        bar = int(48 * max(1.0, scale))
     except Exception:
         pass
-    try:
-        return (win.winfo_screenwidth(), win.winfo_screenheight())
-    except Exception:
-        return (1920, 1080)
+    return (sw, max(480, sh - bar))
 
 
-def fit_to_content(win, min_w=520, min_h=320, max_ratio=0.92, center=True,
-                   pad_x=0, pad_y=0):
-    """Resize ``win`` to what its content actually asks for, then clamp + centre.
+def screen_scale(win) -> float:
+    """相对 1920x1080 基准的比例，只缩不放（大屏保持窗口感，不铺满）。"""
+    sw, sh = work_area(win)
+    return min(1.0, sw / float(BASE_SCREEN[0]), sh / float(BASE_SCREEN[1]))
 
-    Dialogs used to hard-code a geometry, so a longer hint text or a taller
-    font pushed controls outside the visible area and users had to drag the
-    border. Measuring ``winfo_reqwidth/reqheight`` removes that class of bug.
+
+def fit_window(win, design_w, design_h, min_w=None, min_h=None,
+               ratio=0.92, center=True):
+    """按设计尺寸开窗，再按屏幕收缩、居中于父窗口。
+
+    ``design_w/h`` 按 1920x1080 写（常规显示器能完整放下的尺寸）；小屏
+    （1366x768、1280x800）按比例缩到屏幕 ``ratio`` 以内，下限也随之下调，
+    否则 1366x768 上 760 高的窗口会顶出屏幕。
     """
     try:
         win.update_idletasks()
-        w = max(int(min_w), win.winfo_reqwidth() + pad_x)
-        h = max(int(min_h), win.winfo_reqheight() + pad_y)
         sw, sh = work_area(win)
-        w = min(w, int(sw * max_ratio))
-        h = min(h, int(sh * max_ratio))
+        cap_w, cap_h = int(sw * ratio), int(sh * ratio)
+        floor_w = min(int(min_w if min_w else design_w * 0.72), cap_w)
+        floor_h = min(int(min_h if min_h else design_h * 0.72), cap_h)
+        s = screen_scale(win)
+        w = min(max(int(design_w * s), floor_w), cap_w)
+        h = min(max(int(design_h * s), floor_h), cap_h)
         if center:
             x, y = _center_over(win, w, h)
             win.geometry('%dx%d+%d+%d' % (w, h, x, y))
         else:
             win.geometry('%dx%d' % (w, h))
+        try:
+            win.minsize(floor_w, floor_h)
+        except Exception:
+            pass
         return (w, h)
     except Exception:
-        return (min_w, min_h)
+        return (int(design_w), int(design_h))
+
+
+def fit_to_content(win, design_w=760, design_h=620, min_w=520, min_h=320,
+                   max_ratio=0.92, center=True, pad_x=0, pad_y=0):
+    """按内容测量尺寸，落在「设计尺寸」与「屏幕 92%」之间。
+
+    旧版把尺寸写死，提示文字一长、字体一换，控件就被推到可视区外，用户得
+    手工拖边框才能看全。这里先量 ``winfo_reqwidth/reqheight``，再以设计值
+    为起点、屏幕为上限：
+
+    * 内容比设计值大 → 放大到内容（但仍不超过屏幕）；
+    * 内容比设计值小 → 保持设计值，避免窗口缩成一条；
+    * 带 ScrollArea 的对话框内容再长也不怕：ScrollArea 自身的 reqheight 是
+      固定的小值，超出的部分本来就走滚动条。
+    """
+    try:
+        win.update_idletasks()
+        sw, sh = work_area(win)
+        cap_w, cap_h = int(sw * max_ratio), int(sh * max_ratio)
+        floor_w = min(int(min_w), cap_w)
+        floor_h = min(int(min_h), cap_h)
+        s = screen_scale(win)
+        w = max(int(design_w * s), floor_w, win.winfo_reqwidth() + pad_x)
+        h = max(int(design_h * s), floor_h, win.winfo_reqheight() + pad_y)
+        w = max(min(w, cap_w), floor_w)
+        h = max(min(h, cap_h), floor_h)
+        if center:
+            x, y = _center_over(win, w, h)
+            win.geometry('%dx%d+%d+%d' % (w, h, x, y))
+        else:
+            win.geometry('%dx%d' % (w, h))
+        try:
+            win.minsize(floor_w, floor_h)
+        except Exception:
+            pass
+        return (w, h)
+    except Exception:
+        return (int(design_w), int(design_h))
 
 
 def _center_over(win, w, h) -> tuple[int, int]:
@@ -81,8 +150,10 @@ def _center_over(win, w, h) -> tuple[int, int]:
             raise ValueError
     except Exception:
         return ((sw - w) // 2, max(0, (sh - h) // 2 - 20))
-    x = mx + (mw - w) // 2
-    y = my + (mh - h) // 3
+    # 比父窗口更宽/更高时，相对父窗口居中等于是贴边（x 会被 clamp 到 0），
+    # 这种窗口改成相对整个屏幕居中。
+    x = mx + (mw - w) // 2 if w <= mw else (sw - w) // 2
+    y = my + (mh - h) // 3 if h <= mh else max(0, (sh - h) // 2)
     x = max(0, min(x, sw - w))
     y = max(0, min(y, sh - h))
     return (x, y)
