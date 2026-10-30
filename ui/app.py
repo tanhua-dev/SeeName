@@ -11,7 +11,7 @@ import threading
 import time
 import tkinter as tk
 import traceback
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 import engine
 import strings
@@ -373,17 +373,46 @@ class App:
 
         cols = ('no', 'old', 'new', 'place', 'desc', 'sec', 'st')
         heads = ('#', T('原文件名'), T('新文件名'), T('地名'), T('描述'), T('耗时'), T('状态'))
-        # 文件名列固定宽（名字是等宽可预估的），窗口拉宽时多余空间全给地名/描述
-        widths = (36, 172, 196, 116, 108, 46, 56)
+        # 列宽不再写死。原来固定 (36,172,196,116,108,46,56)=730，而 7 列真实需要
+        # 956（光「新文件名」一列就要 270），所以两个文件名一直在被截断——这才是
+        # 「列宽看着不对」的真因，跟画不画线关系不大。
+        samples = {
+            'no': ('999',),
+            'old': ('VID_20240115_183022_00_012.mp4',),
+            'new': ('2024-01-15_18-30-22_西湖区_湖边长椅.mp4',),
+            'place': ('杭州市西湖区北山街道',),
+            'desc': ('一名男子坐在湖边长椅上',),
+            'sec': ('12.4s',),
+            'st': ('已改名',),
+        }
+        bounds = {'no': (34, 46), 'old': (150, 300), 'new': (170, 320),
+                  'place': (90, 190), 'desc': (80, 220), 'sec': (44, 62),
+                  'st': (56, 84)}
+        widths = self._fit_columns(heads, samples, bounds)
+        self._cols = cols
+        self._col_bounds = bounds
+        # 实际内容最宽值：插入行时增量累计，插入后合并一次调整列宽。
+        # 中文地名/描述长短差很多，固定宽度总会差几个像素，截掉一个字用户就得
+        # 去详情条里确认——那不如让列自己长到够。
+        self._col_need = {c: widths[c] for c in cols}
+        self._width_job = None
+
         wrap = tk.Frame(card, bg=theme.C_CARD)
         wrap.pack(fill='both', expand=True, padx=10, pady=(0, 10))
         self.tree = ttk.Treeview(wrap, columns=cols, show='headings', height=9)
-        for c, h, w in zip(cols, heads, widths):
-            self.tree.heading(c, text=h)
-            self.tree.column(c, width=w, anchor='w',
-                             stretch=(c in ('place', 'desc')))
+        for c, h in zip(cols, heads):
+            self.tree.heading(c, text=h, anchor='w')
+            # minwidth 留到下限：窗口拉得很窄时先压缩地名/描述，再不够才出
+            # 横向滚动条，绝不把两个文件名截断
+            self.tree.column(c, width=widths[c], minwidth=bounds[c][0],
+                             anchor='w', stretch=(c in ('place', 'desc')))
         vs = ttk.Scrollbar(wrap, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=vs.set)
+        # 横向滚动只在真放不下时出现，平时不白占 16px（见 _sync_hscroll）
+        self.hs = ttk.Scrollbar(wrap, orient='horizontal', command=self.tree.xview)
+        self.tree.configure(xscrollcommand=self.hs.set)
+        self._hs_shown = False
+        self.tree.bind('<Configure>', lambda e: self._sync_hscroll(), add='+')
         self.tree.pack(side='left', fill='both', expand=True)
         vs.pack(side='right', fill='y')
         self.tree.tag_configure('odd', background=theme.C_ROW_ALT)
@@ -393,6 +422,116 @@ class App:
         self.tree.tag_configure('st_fail', background='#fdeceb')
         self.tree.bind('<<TreeviewSelect>>', self.on_pick_row)
         Tip(self.root, self.tree)
+
+    @staticmethod
+    def _fit_columns(heads, samples, bounds):
+        """按实测字体宽度算列宽：max(表头, 典型内容) + 24px 余量，再夹到上下限。
+
+        写死宽度的老办法在中文名上一试就崩：一个「2024-01-15_西湖区_湖边长椅.mp4」
+        要 246px，而原来只给 196px。这里用真字体量，换字号、换语言都不会错位。
+        """
+        try:
+            hf = tkfont.nametofont('TkHeadingFont')
+            bf = tkfont.nametofont('TkDefaultFont')
+        except Exception:
+            return {c: bounds[c][0] for c in samples}
+        out = {}
+        for c, h in zip(samples.keys(), heads):
+            need = hf.measure(h)
+            try:
+                need = max([need] + [bf.measure(x) for x in samples.get(c, ())])
+            except Exception:
+                pass
+            need += 24                     # 单元格左右内边距
+            lo, hi = bounds.get(c, (60, 320))
+            out[c] = max(lo, min(hi, need))
+        return out
+
+    def _note_width(self, *pairs):
+        """记录某几列的实际内容宽度（只增不减，插入几千行也只是多算几次）。"""
+        if not hasattr(self, '_col_need'):
+            return
+        try:
+            bf = tkfont.nametofont('TkDefaultFont')
+        except Exception:
+            return
+        for col, text in pairs:
+            if not text:
+                continue
+            try:
+                w = bf.measure(str(text)) + 24
+            except Exception:
+                continue
+            if w > self._col_need.get(col, 0):
+                self._col_need[col] = w
+        if self._width_job is None:
+            try:
+                self._width_job = self.root.after_idle(self._apply_widths)
+            except Exception:
+                self._width_job = None
+
+    def _apply_widths(self):
+        """把内容宽度写回列上：文件名优先吃饱，地名/描述按比例让出空间。
+
+        顺序是刻意的——「原文件名 / 新文件名」是这软件的最终产物，截断了等于白干；
+        地名和描述可以截，鼠标停住还有提示。全让完还不够就出横向滚动条。
+        """
+        self._width_job = None
+        try:
+            avail = self.tree.winfo_width()
+            b = getattr(self, '_col_bounds', {})
+            if not b:
+                return
+            cur = {c: int(self.tree.column(c, 'width')) for c in self._cols}
+            need = {c: max(cur[c], int(self._col_need.get(c, 0))) for c in self._cols}
+            want = dict(cur)
+
+            # 1) 两个文件名：内容多宽就多宽（夹到上下限）
+            for c in ('old', 'new'):
+                lo, hi = b[c]
+                want[c] = max(lo, min(hi, need[c]))
+
+            # 2) 地名 / 描述：把剩下的宽度按「各还需要多少」按比例分，不低于下限
+            lo_p, hi_p = b['place']
+            lo_d, hi_d = b['desc']
+            wp = max(lo_p, min(need['place'], hi_p))
+            wd = max(lo_d, min(need['desc'], hi_d))
+            if avail > 1:
+                fixed = want['old'] + want['new'] + cur['no'] + cur['sec'] + cur['st']
+                budget = max(avail - fixed, lo_p + lo_d)
+                if wp + wd > budget:
+                    extra = max(0, budget - (lo_p + lo_d))
+                    ep, ed = max(0, wp - lo_p), max(0, wd - lo_d)
+                    if ep + ed > extra and (ep + ed) > 0:
+                        k = extra / float(ep + ed)
+                        wp, wd = lo_p + int(ep * k), lo_d + int(ed * k)
+            want['place'], want['desc'] = wp, wd
+
+            for c, w in want.items():
+                if w != cur[c]:
+                    self.tree.column(c, width=w)
+            if any(w != cur[c] for c, w in want.items()):
+                self._sync_hscroll()
+        except Exception:
+            pass
+
+    def _sync_hscroll(self):
+        """列宽合计超过可视宽度时才显示横向滚动条（否则白占 16px 高度）。"""
+        try:
+            total = sum(int(self.tree.column(c, 'width')) for c in self._cols)
+            need = total > self.tree.winfo_width() + 2
+        except Exception:
+            return
+        if need == getattr(self, '_hs_shown', False):
+            return
+        self._hs_shown = need
+        try:
+            if need:
+                self.hs.pack(side='bottom', fill='x')
+            else:
+                self.hs.pack_forget()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 选中详情条
     def _build_detail(self, parent):
@@ -834,12 +973,15 @@ class App:
             if stag:
                 tags.append(stag)
             self._rows[it.get('index', i)] = it
+            self._note_width(('old', it.get('old')), ('new', it.get('new')),
+                             ('place', it.get('place')), ('desc', it.get('desc')))
             self.tree.insert('', 'end', tags=tuple(tags), values=(
                 it.get('index', i), it.get('old', ''),
                 it.get('new', '') or T('（时间空白）'),
                 it.get('place', '') or '—',
                 it.get('desc', '') or '—',
                 '%.1fs' % (it.get('secs') or 0), st))
+        self._apply_widths()
 
     def open_dir(self):
         d = self.var_dir.get()
@@ -1212,6 +1354,10 @@ class App:
             self.tree.insert('', 'end', tags=('fail',),
                              values=(idx, r.get('old', ''), T('（失败）'),
                                      r.get('err', ''), '—', '—', T('识别失败')))
+            # 失败行也存进 _rows：点它时详情条要能写出失败原因，否则只剩一句
+            # 「上次识别留下的，没有更多细节」，把真正的原因藏起来了
+            self._rows[idx] = r
+            self._note_width(('old', r.get('old')), ('place', r.get('err')))
             return
         st, stag = self._status_of(r)
         tags = ['odd'] if idx % 2 else []
@@ -1224,6 +1370,8 @@ class App:
                                  r.get('desc', '') or '—',
                                  '%.1fs' % (r.get('t_model') or 0), st))
         self._rows[idx] = r
+        self._note_width(('old', r.get('old')), ('new', r.get('new')),
+                         ('place', r.get('place')), ('desc', r.get('desc')))
         if r.get('thumb'):
             self._thumbs[idx] = r['thumb']
         self.tree.yview_moveto(1.0)

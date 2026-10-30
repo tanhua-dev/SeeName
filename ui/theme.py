@@ -152,9 +152,12 @@ def setup_style(root):
     st.configure('Treeview', rowheight=28, background=C_CARD,
                  fieldbackground=C_CARD, font=(FONT, 9), borderwidth=0,
                  bordercolor=C_LINE)
+    # 表头：底色比白再深一档 + 加深描边，表头与数据行之间才有一条看得见的线
+    #（ttk.Treeview 画不了逐行竖线，只能靠表头分隔 + 隔行底色把行分清）
     st.configure('Treeview.Heading', font=(FONT, 9, 'bold'),
-                 background=C_BG, bordercolor=C_LINE,
-                 lightcolor=C_CARD, darkcolor=C_LINE)
+                 background='#eef1f6', bordercolor=C_LINE_D,
+                 lightcolor='#eef1f6', darkcolor=C_LINE_D, relief='flat',
+                 padding=(6, 5))
     st.map('Treeview.Heading', background=[('active', '#e4eaf3')])
     # 选中行改成浅蓝底 + 深色字：系统默认的深蓝白字在浅色界面里很跳
     st.map('Treeview',
