@@ -69,6 +69,16 @@ def T(s: str, **kw) -> str:
 #       英文里适当加词让语句自然，但不敢改动占位符的数量和顺序。
 EN = {}
 EN.update({
+    '%s 组件版本': '%s component version',
+    '启用 %s': 'Use %s',
+    '下载并启用 %s': 'Download and enable %s',
+    '已安装': 'Installed',
+    '未安装': 'Not installed',
+    '可下载': 'Available',
+    '当前版本': 'Current',
+    '未配置': 'Not configured',
+    '没有可用的 %s 组件版本。': 'No available %s component version.',
+    '%s 已准备好；重启 SeeName 后切换到此版本。': '%s is ready; restart SeeName to switch to this version.',
     # ↓ v3.16 界面改版新增（操作行 / 底部状态栏 / 右侧栏 / ⋯更多 菜单）
     '⚙ 设置': '⚙ Settings',
     '⋯ 更多': '⋯ More',
@@ -823,4 +833,55 @@ EN.update({
     '=== 当前任务不需要模型，跳过模型加载': '=== This task does not need a model; skipping model loading',
     '!! 本地推理库初始化失败，任务终止': '!! Local inference library initialization failed; task stopped',
     '!! 模型加载失败：%s': '!! Model loading failed: %s',
+})
+
+EN.update({
+    '支持下载 4B / 2B Q8 模型；已有 Q4 / F16 模型仍可手动导入。当前使用 CPU。': 'Download 4B / 2B Q8 pairs, or import existing Q4 / F16 models. Uses CPU.',
+    '国外：Hugging Face': 'International: Hugging Face',
+    '国内：ModelScope': 'China: ModelScope',
+    '取消下载': 'Cancel download',
+    '正在下载…': 'Downloading…',
+    '下载': 'Download',
+    '下载模型': 'Download model',
+    '下载 %s（%s）到：\n%s\n\n是否开始下载？': 'Download %s (%s) to:\n%s\n\nStart download?',
+    '下载已取消，保留进度，可重新点击下载继续。': 'Download cancelled. Progress is retained; click Download to resume.',
+    '模型下载完成，可点击“使用”：%s': 'Download complete. Click Use to select: %s',
+    '下载任务结束，详情见主窗口运行日志。': 'Download task ended. See the main window log for details.',
+    '正在取消下载，请稍候…': 'Cancelling download, please wait…',
+    '未找到本地模型，请在模型管理中下载 4B / 2B 模型，或选择已有模型目录。': 'No local models found. Download a 4B / 2B model in Model manager, or select an existing directory.',
+    '模型「%s」缺少配套文件。\n\n现在打开「模型管理」下载模型或选择本地目录吗？': 'Files for model "%s" are incomplete.\n\nOpen Model manager to download or select a local directory?',
+    '该模型仅支持手动导入。': 'This model supports manual import only.',
+})
+
+EN.update({
+    '2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。当前使用 CPU。':
+        'Both 2B and 4B offer Q4 / Q8 models, sharing their respective Q8 vision projectors. Uses CPU.',
+})
+
+EN.update({
+    'GPU 加速…': 'GPU acceleration…',
+    'GPU 加速 · Vulkan': 'GPU acceleration · Vulkan',
+    'GPU 加速': 'GPU acceleration',
+    '可选 GPU 加速（实验功能）': 'Optional GPU acceleration (experimental)',
+    'Vulkan 支持兼容的 NVIDIA / AMD / Intel 显卡；CUDA 支持 NVIDIA 显卡。需要对应显卡驱动；初始化失败时使用 CPU。': 'Vulkan supports compatible NVIDIA / AMD / Intel GPUs; CUDA supports NVIDIA GPUs. The matching display driver is required; initialization failures fall back to CPU.',
+    '下载并启用 CUDA': 'Download and enable CUDA',
+    '启用 CUDA': 'Enable CUDA',
+    '下载 %s 加速组件（%s）并启用？': 'Download and enable the %s acceleration component (%s)?',
+    '继续表示你已阅读并同意 NVIDIA CUDA Toolkit EULA。': 'Continuing confirms that you have read and agree to the NVIDIA CUDA Toolkit EULA.',
+    '%s 组件已启用，识别时加载模型。': 'The %s component is enabled and will load when inference starts.',
+    '可选 Vulkan 加速（实验功能）': 'Optional Vulkan acceleration (experimental)',
+    '支持兼容的 NVIDIA / AMD / Intel 显卡。需要系统显卡驱动；初始化失败时使用 CPU。': 'Supports compatible NVIDIA / AMD / Intel GPUs. Requires graphics drivers; initialization failures fall back to CPU.',
+    '当前设备：%s\n组件目录：%s': 'Current device: %s\nComponent directory: %s',
+    '组件下载大小：%s': 'Component download size: %s',
+    '下载并启用 Vulkan': 'Download and enable Vulkan',
+    '启用 Vulkan': 'Enable Vulkan',
+    '使用 CPU': 'Use CPU',
+    '已切换到 CPU': 'Switched to CPU',
+    '下载 Vulkan 加速组件（%s）并启用？': 'Download and enable the Vulkan component (%s)?',
+    'Vulkan 组件已启用，识别时加载模型。': 'Vulkan component enabled. The model loads when recognition starts.',
+})
+
+EN.update({
+    '2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。可在“GPU 加速”中配置设备。':
+        'Both 2B and 4B offer Q4 / Q8 models with matching Q8 projectors. Configure devices under GPU acceleration.',
 })

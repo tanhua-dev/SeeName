@@ -9,10 +9,12 @@ import threading
 from typing import Callable
 
 from strings import T
+from .downloads import DOWNLOADS, download_pair
 
 
 DEFAULT_MODEL = 'Qwen3VL-4B-Instruct-Q4_K_M'
-MODEL_NAMES = (DEFAULT_MODEL, 'Qwen3VL-4B-Instruct-Q8_0', 'Qwen3VL-4B-Instruct-F16')
+MODEL_NAMES = (DEFAULT_MODEL, 'Qwen3VL-4B-Instruct-Q8_0', 'Qwen3VL-4B-Instruct-F16',
+               'Qwen3VL-2B-Instruct-Q4_K_M', 'Qwen3VL-2B-Instruct-Q8_0')
 PROJECTORS = ('mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf',
               'mmproj-Qwen3VL-4B-Instruct-F16.gguf')
 
@@ -44,11 +46,13 @@ class LocalModelStore:
         self.config = config
         self.save_config = save_config
         self.lock = threading.RLock()
+        self._download_lock = threading.Lock()
         self.on_change: Callable[[], None] = lambda: None
 
     @property
     def catalog(self) -> list[dict[str, str]]:
         return [dict(name=name, size='', tag='Q4 / CPU' if name == DEFAULT_MODEL else '',
+                     downloadable=name in DOWNLOADS,
                      note=T('主模型和同目录的 mmproj 视觉投影文件必须配套存在。'))
                 for name in MODEL_NAMES]
 
@@ -56,10 +60,15 @@ class LocalModelStore:
         # Keep legacy Ollama models_dir separate: those blob files are not GGUF pairs.
         value = self.config().get('gguf_models_dir')
         if not value:
-            near = os.path.join(self.app_dir, 'models')
-            value = (os.path.join(self.user_data, 'models')
-                     if sys.platform == 'darwin' and getattr(sys, 'frozen', False)
-                     and not os.path.isdir(near) else near)
+            if sys.platform == 'win32':
+                base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/AppData/Local')
+            elif sys.platform == 'darwin':
+                base = os.path.expanduser('~/Library/Application Support')
+            else:
+                base = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+                if not os.path.isabs(base):
+                    base = os.path.expanduser('~/.local/share')
+            value = os.path.join(base, 'SeeName', 'models')
         value = os.path.abspath(os.path.expanduser(str(value)))
         if create:
             os.makedirs(value, exist_ok=True)
@@ -76,18 +85,24 @@ class LocalModelStore:
     def _find(self, name: str) -> tuple[list[ModelFiles], str]:
         if name not in MODEL_NAMES:
             return [], T('不支持的模型：%s') % name
-        root = Path(self.directory(create=False))
-        try:
-            directories = [root] + sorted(p for p in root.iterdir() if p.is_dir())
-        except OSError:
-            return [], T('模型目录不存在或无法读取：%s') % root
+        roots = [Path(self.directory(create=False))]
+        # Preserve discovery of pre-download portable/source installations.
+        if not self.config().get('gguf_models_dir'):
+            roots.append(Path(self.app_dir) / 'models')
+        directories = []
+        for root in roots:
+            try:
+                directories.extend([root] + sorted(p for p in root.iterdir() if p.is_dir()))
+            except OSError:
+                continue
         pairs = []
         seen = set()
         for directory in directories:
             model = directory / (name + '.gguf')
             if not self._valid_file(model):
                 continue
-            for filename in PROJECTORS:
+            projectors = tuple(p.replace('4B', '2B') for p in PROJECTORS) if '-2B-' in name else PROJECTORS
+            for filename in projectors:
                 projector = directory / filename
                 if self._valid_file(projector):
                     key = (model.resolve(), projector.resolve())
@@ -134,10 +149,17 @@ class LocalModelStore:
         return True
 
     def download(self, name, on_progress=None, should_stop=None) -> str:
-        raise NotImplementedError(T('请将 GGUF 主模型和 mmproj 文件放入模型目录。'))
+        if name not in DOWNLOADS:
+            raise ValueError(T('该模型仅支持手动导入。'))
+        with self._download_lock, self.lock:
+            return download_pair(name, self.directory(), self.source(), on_progress, should_stop)
 
     def source(self) -> str:
-        return 'local'
+        source = self.config().get('gguf_download_source', 'huggingface')
+        return source if source in ('huggingface', 'modelscope') else 'huggingface'
 
     def set_source(self, url: str) -> str:
-        raise NotImplementedError(T('当前使用本地模型目录。'))
+        if url not in ('huggingface', 'modelscope'):
+            raise ValueError('Unknown download source: ' + url)
+        self.save_config(gguf_download_source=url)
+        return url

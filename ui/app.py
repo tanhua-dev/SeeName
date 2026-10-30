@@ -16,11 +16,13 @@ from tkinter import filedialog, messagebox, ttk
 import engine
 import strings
 from strings import T
+from core.features import metadata_writing_enabled
 from . import theme
 from .common import APP_AUTHOR, APP_SUB, APP_TITLE, APP_VER, asset_path, cut, fmt_dur, open_path
 from .widgets import Hover, Tip
 from .dialogs.information import AboutDialog, HelpDialog, help_path
 from .dialogs.models import ModelDialog
+from .dialogs.acceleration import AccelerationDialog
 from .dialogs.review import PlanDialog, RenameResultDialog, ReplaceDialog
 
 
@@ -117,6 +119,9 @@ class App:
         return default
 
     def on_close(self):
+        for window in self.root.winfo_children():
+            if isinstance(window, (ModelDialog, AccelerationDialog)):
+                window.cancel_download.set()
         try:
             g = self.root.geometry()
             m = re.match(r'^(\d+)x(\d+)', g)
@@ -613,11 +618,13 @@ class App:
 
         # ⑦ 描述落盘（三个独立开关，默认全开）
         ttk.Separator(body, orient='horizontal').pack(fill='x', pady=(2, 8))
-        self.var_meta = tk.BooleanVar(value=self._sw('write_meta', True))
-        ttk.Checkbutton(body, text=T('写入文件元数据'),
-                        variable=self.var_meta,
-                        command=lambda: self._save_sw('write_meta', self.var_meta)
-                        ).pack(fill='x', anchor='w')
+        self.var_meta = tk.BooleanVar(value=metadata_writing_enabled() and self._sw('write_meta', True))
+        self.cb_meta = ttk.Checkbutton(body, text=T('写入文件元数据'),
+                                       variable=self.var_meta,
+                                       command=lambda: self._save_sw('write_meta', self.var_meta))
+        if not metadata_writing_enabled():
+            self.cb_meta.state(['disabled'])
+        self.cb_meta.pack(fill='x', anchor='w')
         self.var_txt = tk.BooleanVar(value=self._sw('write_txt', True))
         ttk.Checkbutton(body, text=T('生成 .ai.txt 摘要'),
                         variable=self.var_txt,
@@ -657,6 +664,9 @@ class App:
     # ------------------------------------------------------------ 新增开关的落盘
     def _save_sw(self, key, var):
         """布尔开关：勾选/取消都立刻写进 config.json（下次打开还是这个状态）。"""
+        if key == 'write_meta' and not metadata_writing_enabled():
+            var.set(False)
+            return
         try:
             engine.save_config(**{key: bool(var.get())})
         except Exception:
@@ -1092,6 +1102,10 @@ class App:
     def _maybe_help(self):
         """首次启动自动弹一次说明；用户勾了「下次不再显示」就写进 config。"""
         try:
+            if not engine.installed_models():
+                messagebox.showinfo(APP_TITLE, T('未找到本地模型，请在模型管理中下载 4B / 2B 模型，或选择已有模型目录。'))
+                self.open_model_dialog()
+                return
             if self._sw('help_autoshow', True):
                 self.open_help()
         except Exception:
@@ -1104,6 +1118,13 @@ class App:
                 w.focus_set()
                 return
         ModelDialog(self.root, self)
+
+    def open_acceleration(self):
+        for window in self.root.winfo_children():
+            if isinstance(window, AccelerationDialog):
+                window.lift()
+                return
+        AccelerationDialog(self.root, self)
 
     def on_rollback(self):
         d = os.path.abspath(self.var_dir.get())
@@ -1156,7 +1177,7 @@ class App:
         if need_model and not engine.model_exists(model):
             if messagebox.askyesno(
                     APP_TITLE,
-                    T('模型「%s」缺少配套文件。\n\n现在打开「模型管理」选择本地 GGUF 目录吗？') % model):
+                    T('模型「%s」缺少配套文件。\n\n现在打开「模型管理」下载模型或选择本地目录吗？') % model):
                 self.open_model_dialog()
             return
 
@@ -1265,7 +1286,7 @@ class App:
                 self.log(message, 'ok' if ok else 'err')
                 self.update_server(engine.server_info(), engine.list_models(), engine.runtime_status())
                 for window in self.root.winfo_children():
-                    if isinstance(window, ModelDialog):
+                    if isinstance(window, (ModelDialog, AccelerationDialog)):
                         window.refresh()
             elif kind == 'end':
                 self.finish()
@@ -1283,7 +1304,7 @@ class App:
         self._models = models or []
         rt = rt or engine.runtime_status()
         self.lbl_port.configure(text='%s · %s' % (rt['backend'], rt['device']))
-        self._port_hint = rt.get('error') or T('本地推理，不需要端口或服务进程')
+        self._port_hint = rt.get('error') or rt.get('acceleration_error') or T('本地推理，不需要端口或服务进程')
         self.lbl_models.configure(text=T('模型库 %s') % cut(rt['models_dir'], 34))
         self._models_full = rt['models_dir']
         values = list(dict.fromkeys(models + [item['name'] for item in engine.MODEL_CATALOG]))

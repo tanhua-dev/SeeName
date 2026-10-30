@@ -477,6 +477,9 @@ def _video_ffmpeg(ff: str, path: str, title: str, long: str,
 def write_meta(path: str, title: str, long: str, kw: str,
                ffmpeg: str = '') -> tuple[bool, str]:
     """写一个文件的元数据。返回 (是否成功, 说明)。失败一律不改原文件。"""
+    import sys
+    if getattr(sys, '_seename_metadata_write_disabled', False):
+        return False, 'This build does not allow writing media metadata.'
     ext = os.path.splitext(path)[1].lower()
     try:
         if ext in JPG_EXT:
