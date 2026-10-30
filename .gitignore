@@ -1,0 +1,32 @@
+# 体积产物 / 运行时
+models/
+runtime/
+_dist/
+build/
+dist/
+*.exe
+*.7z
+__pycache__/
+*.pyc
+_build_venv/
+_build_tmp/
+_build_tmp*/
+stage_*/
+
+# 本机运行产物与隐私数据（含 GPS、真实文件名、私人路径）
+data/ledger_*.json
+data/plan_*.json
+data/report_*
+data/run.log
+data/runtime.log
+data/*_cache.json
+config.json
+
+# 开发草稿 / 中间数据
+_dev_scratch/
+_gn/
+_gnw/
+_legacy/
+_src/
+_t61a.json
+_t61b.json

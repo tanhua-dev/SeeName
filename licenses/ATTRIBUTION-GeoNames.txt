@@ -1,0 +1,21 @@
+地名数据来源 GeoNames（https://www.geonames.org），遵循 CC-BY 4.0 许可证
+
+Name data from GeoNames (https://www.geonames.org), licensed under
+Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+
+用于本软件的：data\cities_world.csv（境外与港澳台全球城市库，约 10.7 万条）
+
+- 数据源：GeoNames `cities1000` 数据集
+- 处理方式：仅保留人口 ≥ 2000 的点，精简为
+  `名称,纬度,经度,国家码,人口,中文名` 六列；
+  属剔除大量显式属性后的「提取 / 再组织」结果（CC-BY 允许修改与再分发，仅需署名）
+- 境外城市的中文名来自两处：
+  ① 随构建脚本固化的手工补表（覆盖国人常去的热门城市与各国首都）；
+  ② GeoNames `alternatenames` 中的纯汉字候选（繁转简后取最短者）。
+  GeoNames 未收录中文别名的城市仍显示拉丁原名（如「法国 Paris」）
+
+署名要求（CC-BY 4.0）：须以合理方式标明数据来源为 GeoNames、提供许可证链接，
+并说明是否对原始数据做过修改——以上信息已在本文件中列明。
+
+完整第三方声明见随附的 NOTICE.md 第五节。
