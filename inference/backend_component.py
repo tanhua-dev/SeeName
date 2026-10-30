@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,49 @@ BINDING_COMMIT = 'ce261d12b5810fb4c6e695efc85d5e8cf23f0630'
 LLAMA_COMMIT = '27c7a769da1671c97b2e3f6cb88704a6e1e0d0cd'
 NATIVE_FILES = ('ggml-base.dll', 'ggml.dll', 'ggml-cpu.dll', 'llama.dll', 'mtmd.dll')
 BACKEND_ABI = 'ggml-backend-dl-v1'
+_GGML_LOG_LOCK = threading.RLock()
+
+
+def _load_backend_with_diagnostics(ggml, path):
+    """Capture native backend loader warnings/errors while preserving logging."""
+    messages = []
+    with _GGML_LOG_LOCK:
+        previous_callback = ggml.ggml_log_callback()
+        previous_user_data = ctypes.c_void_p()
+        ggml.ggml_log_get(ctypes.byref(previous_callback), ctypes.byref(previous_user_data))
+        capturing_continuation = False
+
+        @ggml.ggml_log_callback
+        def capture(level, text, user_data):
+            nonlocal capturing_continuation
+            if level in (ggml.GGMLLogLevel.GGML_LOG_LEVEL_WARN,
+                         ggml.GGMLLogLevel.GGML_LOG_LEVEL_ERROR):
+                capturing_continuation = True
+                message = text.decode('utf-8', 'replace').strip()
+                if message:
+                    messages.append(message)
+            elif level == ggml.GGMLLogLevel.GGML_LOG_LEVEL_CONT and capturing_continuation:
+                message = text.decode('utf-8', 'replace').strip()
+                if message:
+                    messages.append(message)
+            else:
+                capturing_continuation = False
+            if previous_callback:
+                previous_callback(level, text, previous_user_data)
+
+        try:
+            ggml.ggml_log_set(capture, ctypes.c_void_p())
+            registration = ggml.ggml_backend_load(os.fsencode(path))
+        finally:
+            ggml.ggml_log_set(previous_callback if previous_callback else None, previous_user_data)
+    return registration, messages
+
+
+def _with_native_diagnostics(error, messages):
+    details = '\n'.join(messages[-20:])
+    if not details:
+        return str(error)
+    return f'{error}\nllama.cpp diagnostics:\n{details}'
 
 
 def compatibility_key(binding_commit=BINDING_COMMIT, llama_commit=LLAMA_COMMIT):
@@ -264,6 +308,7 @@ class NativeBackendComponent:
         if not self.config().get(self.config_key, False):
             return False
         with self._lock:
+            native_messages = []
             try:
                 entry = self._selected_entry()
                 folder = self.root / entry['id']
@@ -273,7 +318,8 @@ class NativeBackendComponent:
                     raise RuntimeError(f'Restart SeeName before activating a different {self.backend} component version')
                 if self._reg is None:
                     self._dll_directory = os.add_dll_directory(str(folder))
-                    self._reg = g.ggml_backend_load(os.fsencode(folder / self.plugin))
+                    self._reg, native_messages = _load_backend_with_diagnostics(
+                        g, folder / self.plugin)
                     if not self._reg:
                         raise RuntimeError(f'{self.backend} backend initialization failed; using CPU')
                     self._loaded_id = entry['id']
@@ -284,7 +330,7 @@ class NativeBackendComponent:
                 self.error = ''
                 return True
             except Exception as error:
-                self.error = str(error)
+                self.error = _with_native_diagnostics(error, native_messages)
                 self.devices = []
                 return False
 

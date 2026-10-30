@@ -54,6 +54,11 @@ class LlamaBackend:
                     self._library = llama_cpp
                     self._handler_class = Qwen3VLChatHandler
                 self._gpu_ready = bool(self.accelerator and self.accelerator.load())
+                if (self.accelerator and self.accelerator.active_name
+                        and not self._gpu_ready and on_log):
+                    detail = self.accelerator.error
+                    if detail:
+                        on_log(detail)
                 self._ready = True
                 self._error = ''
                 return True
