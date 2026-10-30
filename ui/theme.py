@@ -104,6 +104,19 @@ def setup_style(root):
            bordercolor=[('disabled', '#a8c2ec'), ('focus', C_ACCENT_F),
                         ('pressed', C_ACCENT_P), ('active', C_ACCENT_D)])
 
+    # 文字链接按钮：结果表标题行右侧的「打开目录 / 识别报告 / 改名台账」。
+    # 这三项在原「⋯更多」菜单里是重复入口，摆成文字按钮既不抢主按钮的注意力，
+    # 又不用记菜单。
+    st.configure('Link.TButton', padding=(6, 3), font=(FONT, 9),
+                 background=C_CARD, foreground=C_ACCENT,
+                 bordercolor=C_CARD, lightcolor=C_CARD, darkcolor=C_CARD,
+                 relief='flat', borderwidth=0)
+    st.map('Link.TButton',
+           background=[('disabled', C_CARD), ('pressed', C_CARD), ('active', C_CARD)],
+           foreground=[('disabled', C_DIS_FG), ('active', C_ACCENT_D),
+                       ('pressed', C_ACCENT_P)],
+           bordercolor=[('disabled', C_CARD), ('active', C_CARD)])
+
     # ---- 输入框 / 下拉框：默认 / 悬浮 / 聚焦 / 禁用 ----
     for es in ('TEntry', 'TSpinbox'):
         st.configure(es, padding=5, fieldbackground=C_CARD,

@@ -42,6 +42,7 @@ class SettingsDialog(tk.Toplevel):
         scroll = ScrollArea(self, bg=theme.C_BG, width=600)
         scroll.pack(fill='both', expand=True, padx=(theme.S4, theme.S2))
         body = scroll.inner
+        self._build_scope(body)
         self._build_detect(body)
         self._build_model(body)
         self._build_geo(body)
@@ -77,6 +78,49 @@ class SettingsDialog(tk.Toplevel):
                        font=(theme.FONT, 9), anchor='w', justify='left',
                        wraplength=kw.pop('wraplength', 540), **kw)
         return lab
+
+    # ---------------------------------------------------------------- 范围
+    def _build_scope(self, body):
+        """处理范围：从主界面第二行搬过来的四个勾选。
+
+        主界面现在只有三步，勾选挤在那里会让人先看见一堆开关再看见「开始识别」。
+        搬进设置后主界面干净了，而范围说明仍在主界面第 3 步右侧实时显示（见
+        App._refresh_scope），改完立刻能看到会发生什么。
+        """
+        card = self._card(body, T('处理范围'))
+        app = self.app
+
+        def scope_changed():
+            """改完立刻算一遍「这次会处理什么」，主界面和这里同时更新。"""
+            app._refresh_scope()
+            try:
+                self.lbl_scope.configure(text=app.lbl_scope.cget('text'),
+                                         fg=app.lbl_scope.cget('fg'))
+            except Exception:
+                pass
+
+        app.cb_ai_desc = CheckRow(card, T('AI描述'), app.var_ai_desc,
+                                  command=lambda: (app._on_ai_desc(), scope_changed()),
+                                  bg=theme.C_CARD)
+        app.cb_ai_desc.pack(fill='x')
+        self._hint(card, T('关掉就不调用模型，只按拍摄时间和 GPS 命名，秒级完成。')).pack(
+            fill='x', pady=(2, theme.S2))
+
+        row = tk.Frame(card, bg=theme.C_CARD)
+        row.pack(fill='x')
+        app.cb_video = CheckRow(row, T('视频'), app.var_video,
+                                command=scope_changed, bg=theme.C_CARD)
+        app.cb_video.pack(side='left')
+        app.cb_photos = CheckRow(row, T('照片'), app.var_photos,
+                                 command=scope_changed, bg=theme.C_CARD)
+        app.cb_photos.pack(side='left', padx=(20, 0))
+
+        app.cb_desc_photo = CheckRow(card, T('照片也写内容描述'), app.var_desc_photo,
+                                     command=scope_changed, bg=theme.C_CARD)
+        app.cb_desc_photo.pack(fill='x', pady=(theme.S2, 0))
+        self.lbl_scope = self._hint(card, '')
+        self.lbl_scope.pack(fill='x', pady=(2, 0))
+        scope_changed()
 
     # ---------------------------------------------------------------- 识别
     def _build_detect(self, body):
@@ -198,7 +242,8 @@ class SettingsDialog(tk.Toplevel):
         busy = bool(self.app.running or self.app._model_busy)
         for widget in (self.choice_frames, self.check_all, self.choice_geolv,
                        self.check_netgeo, self.check_txt, self.check_md,
-                       self.choice_lang):
+                       self.choice_lang, self.app.cb_ai_desc, self.app.cb_video,
+                       self.app.cb_photos):
             try:
                 widget.set_enabled(not busy)
             except Exception:

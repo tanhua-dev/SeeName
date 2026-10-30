@@ -34,7 +34,8 @@ try:
 except Exception:
     _HAS_PIL = False
 
-_PREV_W = 280
+_PREV_W = 112
+_PREV_H = 54       # 详情条只有 68px 高，缩略图压到 112x54
 
 
 class App:
@@ -75,9 +76,19 @@ class App:
         self.var_md = tk.BooleanVar(value=self._sw('write_md', True))
         self.var_lang = tk.StringVar(
             value=T('中文') if strings.lang() == 'zh' else 'English')
+        # 处理范围的四个勾选：原来住在主界面第二行，现在搬进设置窗口的「常用」
+        # 第一组。变量留在这里，是因为识别流程随时要读，窗口没开也得有值。
+        self.var_ai_desc = tk.BooleanVar(value=self._sw('ai_desc', True))
+        self.var_video = tk.BooleanVar(value=True)
+        self.var_photos = tk.BooleanVar(value=True)
+        self.var_desc_photo = tk.BooleanVar(value=True)
         # 这些控件只在设置窗口里存在；窗口没开时保持 None，用到的地方都要判空
         self.cb_model = None
         self.btn_model = None
+        self.cb_ai_desc = None
+        self.cb_video = None
+        self.cb_photos = None
+        self.cb_desc_photo = None
         self.sp_limit = None
         self.ent_amap = None
         self.settings_dlg = None
@@ -202,24 +213,23 @@ class App:
                  bg=theme.C_BG, fg=theme.C_SUB, font=(theme.FONT, 8)).pack(side='bottom', fill='x',
                                                          padx=14, pady=(0, 4))
 
-        # 主区：左列（控制 + 结果 + 日志抽屉），右侧栏（预览 + 设置）。
-        # 侧栏**先**入队：窗口再窄它也保得住自己的宽度，被裁的只会是结果表。
+        # 主区只有一列：三步操作 → 结果表 → 选中详情条 → 日志抽屉。
+        # 右侧栏取消了：它占的 270px 还给了结果表（7 列要 956px，原来只给到
+        # 775，两个文件名一直在被截断）。预览和选中详情改成表格下方一条
+        # 68px 的横排详情条——同一批东西竖排吃 270px 宽，横排只吃 68px 高。
         body = tk.Frame(self.root, bg=theme.C_BG)
         body.pack(fill='both', expand=True, padx=14, pady=(0, theme.S2))
         left = tk.Frame(body, bg=theme.C_BG)
-        self._build_sidebar(body)
         left.pack(side='left', fill='both', expand=True)
 
         self._build_control(left)
         self._build_table(left)
+        self._build_detail(left)
         self._build_log_drawer(left)
 
         # 识别过程中不能再动的东西（改了目录或范围会让结果对不上号）。
-        # 侧栏里的设置也是「运行中不要改」，所以这里统一收，别漏掉后来加的项。
-        self._busy_widgets = [w for w in (
-            self.ent_dir, self.cmb_preset, self.cb_video, self.cb_photos,
-            self.cb_desc_photo,
-        ) if w is not None]
+        # 处理范围的勾选在设置窗口里，由设置窗口自己按 running 置灰（见 refresh）。
+        self._busy_widgets = [w for w in (self.ent_dir, self.cmb_preset) if w is not None]
 
     def _card(self, parent, title=None):
         f = tk.Frame(parent, bg=theme.C_CARD, highlightbackground=theme.C_LINE,
@@ -227,6 +237,19 @@ class App:
         if title:
             tk.Label(f, text=title, bg=theme.C_CARD, fg=theme.C_SUB,
                      font=(theme.FONT, 10, 'bold')).pack(anchor='w', padx=theme.S4, pady=(theme.S2 + 1, 0))
+        return f
+
+    def _step_badge(self, parent, n: int):
+        """标了编号的小圆点：① 选文件夹 ② 开始识别 ③ 核对并改名。
+
+        用户不用记「下一步点哪里」——编号本身就在告诉他顺序。
+        """
+        f = tk.Frame(parent, bg=theme.C_CARD)
+        c = tk.Canvas(f, width=18, height=18, bg=theme.C_CARD, highlightthickness=0)
+        c.create_oval(1, 1, 17, 17, fill=theme.C_ACCENT_L, outline='')
+        c.create_text(9, 9, text=str(n), fill=theme.C_ACCENT,
+                      font=(theme.FONT, 9, 'bold'))
+        c.pack()
         return f
 
     def _build_head(self):
@@ -259,14 +282,23 @@ class App:
                    width=theme.button_width(9, 12)).pack(side='right', padx=(0, 8), pady=(4, 0))
 
     def _build_control(self, parent):
+        """三步走完：① 选文件夹 ② 开始识别 ③ 核对并改名。
+
+        原来是四行控件，而第三步「核对并改名」藏在「⋯更多」菜单里——可它恰恰
+        是识别完必点的动作，藏菜单里等于让用户去猜。现在三步竖排在界面上，
+        编号写在前面；处理范围的勾选搬进设置窗口（常用第一组），这一屏只留三步。
+        """
         card = self._card(parent)
         card.pack(fill='x')
         inner = tk.Frame(card, bg=theme.C_CARD)
         inner.pack(fill='x', padx=12, pady=10)
 
-        # —— 第一行：目录（右边的「浏览… / 预设」先从右缘占位，窄窗口也不会被挤出去）
+        # —— 第 1 步：文件夹（右边「浏览… / 预设」先占位，窄窗口也不会被挤出去）
         r1 = tk.Frame(inner, bg=theme.C_CARD)
         r1.pack(fill='x')
+        self._step_badge(r1, 1).pack(side='left')
+        tk.Label(r1, text=T('文件夹'), bg=theme.C_CARD, fg=theme.C_TEXT,
+                 font=(theme.FONT, 10)).pack(side='left', padx=(7, 9))
         self._preset_disp = {T(k): k for k in engine.PRESETS}
         self.var_preset = tk.StringVar(value='')
         # 没有预设时不建这个下拉，免得显示一个空框
@@ -279,89 +311,63 @@ class App:
         else:
             self.cmb_preset = None
         ttk.Button(r1, text=T('浏览…'), command=self.pick_dir).pack(side='right', padx=(0, 8))
-        tk.Label(r1, text=T('目录'), bg=theme.C_CARD, fg=theme.C_TEXT,
-                 font=(theme.FONT, 10)).pack(side='left')
         self.var_dir = tk.StringVar(
             value=(list(engine.PRESETS.values())[0] if engine.PRESETS else ''))
         # 换了目录，上一次的运行状态就不算数了，回到「未开始」
         self.var_dir.trace_add('write', lambda *a: self._on_dir_change())
         self.ent_dir = ttk.Entry(r1, textvariable=self.var_dir, font=(theme.FONT, 10))
-        self.ent_dir.pack(side='left', fill='x', expand=True, padx=8)
+        self.ent_dir.pack(side='left', fill='x', expand=True)
 
-        # —— 第二行：处理范围（视频 / 照片 各自独立勾选）
+        # —— 第 2 步：开始识别（进度条与状态灯并到同一行，省下整整一行高度）
         r2 = tk.Frame(inner, bg=theme.C_CARD)
-        r2.pack(fill='x', pady=(12, 0))
-        box = ttk.Labelframe(r2, text=T(' 处理范围 '), padding=(14, 7))
-        box.pack(fill='x')
-        # —— 总开关「AI描述」：勾着才调模型。关掉后视频不抽帧、照片不送模型，
-        #    全部只按「时间 + 地名」命名（慢机器的纯离线快路径）。
-        #    状态写进 config.json（键名 ai_desc，默认开），下次打开保持。
-        self.var_ai_desc = tk.BooleanVar(value=self._sw('ai_desc', True))
-        # 勾选框统一用 CheckRow：方块 + 白勾、整行可点、悬停高亮，
-        # 比 ttk 自带的 13px 指示器清楚得多（那玩意在小窗口里像个小黑点）
-        self.cb_ai_desc = CheckRow(box, T('AI描述'), self.var_ai_desc,
-                                   command=self._on_ai_desc)
-        self.cb_ai_desc.pack(side='left')
-        self.var_video = tk.BooleanVar(value=True)
-        self.cb_video = CheckRow(box, T('视频'), self.var_video,
-                                 command=self._refresh_scope)
-        self.cb_video.pack(side='left', padx=(22, 0))
-        self.var_photos = tk.BooleanVar(value=True)
-        self.cb_photos = CheckRow(box, T('照片'), self.var_photos,
-                                  command=self._refresh_scope)
-        self.cb_photos.pack(side='left', padx=(22, 0))
-        # 「照片也写内容描述」是范围选项（决定照片要不要多花 11 秒/张送模型），
-        # 跟着视频/照片放一起；原来的位置让给侧栏底部的耗时说明
-        # 「照片也写内容描述」常开：每次启动默认打勾（照片每张多花约 11 秒，
-        # 但能拿到「奶奶戴帽微笑」这类描述）；想走只读 EXIF 的秒级快路径，
-        # 临时取消勾选即可——该选项不写盘，下次打开恢复打勾。
-        # v3.22 起它是「AI描述」的子选项：总开关关掉时自动置灰（见 _refresh_scope）。
-        self.var_desc_photo = tk.BooleanVar(value=True)
-        self.cb_desc_photo = CheckRow(box, T('照片也写内容描述'), self.var_desc_photo,
-                                      command=self._refresh_scope)
-        self.cb_desc_photo.pack(side='left', padx=(22, 0))
-
-        # 处理范围的耗时/后果说明：直接放在勾选行下面，一眼能看到「这次会处理什么」。
-        # （原先是塞在侧栏设置区底部，窗口一小就被挤到看不见的地方）
-        self.lbl_scope = tk.Label(inner, text='', bg=theme.C_CARD, fg=theme.C_SUB,
-                                  font=(theme.FONT, 9), anchor='w', justify='left',
-                                  wraplength=660)
-        self.lbl_scope.pack(fill='x', pady=(4, 0))
-
-        # —— 第三行：只有一个主要动作。「停止识别」平时不占位置，
-        #    运行时才 pack 出来（见 _show_stop），结束/停掉后自动收回去。
-        r3 = tk.Frame(inner, bg=theme.C_CARD)
-        r3.pack(fill='x', pady=(12, 0))
-        self.btn_go = ttk.Button(r3, text=T('▶ 开始识别'), style='Go.TButton',
+        r2.pack(fill='x', pady=(11, 0))
+        self._step_badge(r2, 2).pack(side='left')
+        self.btn_go = ttk.Button(r2, text=T('▶ 开始识别'), style='Go.TButton',
                                  command=self.on_go)
-        self.btn_go.pack(side='left')
-        self.btn_stop = ttk.Button(r3, text=T('停止识别'), style='Sec.TButton',
+        self.btn_go.pack(side='left', padx=(7, 0))
+        self.btn_stop = ttk.Button(r2, text=T('停止识别'), style='Sec.TButton',
                                    width=theme.button_width(10, 9), command=self.on_stop,
                                    state='disabled')
-        self.btn_stop.pack_forget()
-
-        # —— 第四行：进度（左：细进度；右：本轮状态灯）
-        r4 = tk.Frame(inner, bg=theme.C_CARD)
-        r4.pack(fill='x', pady=(12, 0))
-        self.pb = ttk.Progressbar(r4, mode='determinate', maximum=100)
-        self.pb.pack(fill='x')
-        r4b = tk.Frame(r4, bg=theme.C_CARD)
-        r4b.pack(fill='x', pady=(4, 0))
-        self.lbl_prog = tk.Label(r4b, text=T('待处理'), bg=theme.C_CARD, fg=theme.C_SUB,
-                                 font=(theme.FONT, 9), anchor='w')
-        self.lbl_prog.pack(side='left')
         # 状态灯：说清现在是「没开始 / 正在跑 / 已停 / 跑完了」，
         # 光看按钮的禁用状态分不出来（v3.4 反馈）
-        self.lbl_state = tk.Label(r4b, text=T('● 未开始'), bg=theme.C_CARD, fg=theme.C_SUB,
-                                  font=(theme.FONT, 10, 'bold'), anchor='e')
+        self.lbl_state = tk.Label(r2, text=T('● 未开始'), bg=theme.C_CARD, fg=theme.C_SUB,
+                                  font=(theme.FONT, 10, 'bold'))
         self.lbl_state.pack(side='right')
+        self.pb = ttk.Progressbar(r2, mode='determinate', maximum=100)
+        self.pb.pack(side='left', fill='x', expand=True, padx=(12, 12))
+        self.lbl_prog = tk.Label(r2, text=T('待处理'), bg=theme.C_CARD, fg=theme.C_SUB,
+                                 font=(theme.FONT, 9))
+        self.lbl_prog.pack(side='left', padx=(0, 12))
+
+        # —— 第 3 步：核对并改名。识别完自动可点（见 _refresh_plan_btn），
+        #    目录里有上次的计划表时也可点，不用先跑一遍。
+        r3 = tk.Frame(inner, bg=theme.C_CARD)
+        r3.pack(fill='x', pady=(11, 0))
+        self._step_badge(r3, 3).pack(side='left')
+        self.btn_plan = ttk.Button(r3, text=T('核对并改名…'), style='Sec.TButton',
+                                   command=self.open_plan, state='disabled',
+                                   width=theme.button_width(11, 13))
+        self.btn_plan.pack(side='left', padx=(7, 0))
+        # 「这次会处理什么」的说明靠右：一眼看到范围，不用再去翻设置
+        self.lbl_scope = tk.Label(r3, text='', bg=theme.C_CARD, fg=theme.C_SUB,
+                                  font=(theme.FONT, 9), anchor='e', justify='right')
+        self.lbl_scope.pack(side='right', fill='x', expand=True, padx=(12, 0))
 
     # ------------------------------------------------------------ 结果表
     def _build_table(self, parent):
         card = self._card(parent)
         card.pack(fill='both', expand=True, pady=(10, 0))
-        tk.Label(card, text=T('处理结果'), bg=theme.C_CARD, fg=theme.C_SUB,
-                 font=(theme.FONT, 10, 'bold')).pack(anchor='w', padx=theme.S4, pady=(theme.S2 + 1, theme.S1))
+        head = tk.Frame(card, bg=theme.C_CARD)
+        head.pack(fill='x', padx=theme.S4, pady=(theme.S2 + 1, theme.S1))
+        tk.Label(head, text=T('处理结果'), bg=theme.C_CARD, fg=theme.C_SUB,
+                 font=(theme.FONT, 10, 'bold')).pack(side='left')
+        # 三个「打开」入口原来在「⋯更多」菜单里，和侧栏的按钮重复。
+        # 收进表格标题行右侧：看得见、不占地方、也不用记菜单。
+        for txt, cmd in ((T('改名台账'), self.open_ledger),
+                         (T('识别报告'), self.open_report),
+                         (T('打开目录'), self.open_dir)):
+            ttk.Button(head, text=txt, style='Link.TButton',
+                       command=cmd).pack(side='right', padx=(10, 0))
 
         cols = ('no', 'old', 'new', 'place', 'desc', 'sec', 'st')
         heads = ('#', T('原文件名'), T('新文件名'), T('地名'), T('描述'), T('耗时'), T('状态'))
@@ -385,6 +391,58 @@ class App:
         self.tree.tag_configure('st_fail', background='#fdeceb')
         self.tree.bind('<<TreeviewSelect>>', self.on_pick_row)
         Tip(self.root, self.tree)
+
+    # ------------------------------------------------------------ 选中详情条
+    def _build_detail(self, parent):
+        """表格下方一条 68px 的横排详情：缩略图 + 原名→新名 + 地名/耗时。
+
+        原右侧栏里的预览和「点行看详情」搬到这里。竖排要 270px 宽，横排只要
+        68px 高——省下的宽度全给结果表，7 列才放得下（实测 956px）。
+        """
+        card = self._card(parent)
+        card.pack(fill='x', pady=(8, 0))
+        row = tk.Frame(card, bg=theme.C_CARD)
+        row.pack(fill='x', padx=10, pady=7)
+        self.lbl_prev = tk.Label(row, text=T('无预览'), bg='#eef1f5', fg=theme.C_HINT,
+                                 font=(theme.FONT, 8), width=16, height=3)
+        self.lbl_prev.pack(side='left')
+        box = tk.Frame(row, bg=theme.C_CARD)
+        box.pack(side='left', fill='x', expand=True, padx=(10, 0))
+        self.lbl_d1 = tk.Label(box, text='', bg=theme.C_CARD, fg=theme.C_TEXT,
+                               font=(theme.FONT, 10), anchor='w', justify='left')
+        self.lbl_d1.pack(fill='x')
+        self.lbl_d2 = tk.Label(box, text='', bg=theme.C_CARD, fg=theme.C_SUB,
+                               font=(theme.FONT, 9), anchor='w', justify='left')
+        self.lbl_d2.pack(fill='x', pady=(2, 0))
+        self._set_detail(None)
+
+    def _set_detail(self, r=None, fallback=''):
+        """详情条两行字：第一行 原名 → 新名，第二行 地名 · 耗时 · 帧数/失败原因。
+
+        名字被列宽截断时，这里是唯一能看到完整名字的地方，所以第一行优先。
+        """
+        if fallback or not r:
+            self.lbl_d1.configure(
+                text=fallback or T('点表格里的一行，这里显示它的原名和新名'),
+                fg=theme.C_SUB)
+            self.lbl_d2.configure(text=T('选中后这里显示地名、耗时和失败原因'),
+                                  fg=theme.C_HINT)
+            return
+        self.lbl_d1.configure(
+            text='%s　→　%s' % (r.get('old', ''),
+                                r.get('new', '') or T('（时间空白，不改名）')),
+            fg=theme.C_TEXT)
+        bits = []
+        if r.get('place'):
+            bits.append(r['place'])
+        secs = r.get('secs') or r.get('t_model') or 0
+        if secs:
+            bits.append('%.1fs' % secs)
+        if r.get('frames'):
+            bits.append(T('%d 帧 / %d token') % (r['frames'], r.get('tokens', 0)))
+        self.lbl_d2.configure(text='　·　'.join(bits), fg=theme.C_SUB)
+        if r.get('err'):
+            self.lbl_d2.configure(text=T('失败：%s') % r['err'], fg=theme.C_ERR)
 
     # ------------------------------------------------------------ 运行日志（可折叠）
     def _build_log_drawer(self, parent):
@@ -445,51 +503,9 @@ class App:
             engine.save_config(logopen=bool(opened))
         except Exception:
             pass
-        self._sync_more_menu()
 
     def toggle_log(self):
         self._log_apply(not bool(self.var_log.get()))
-
-    # ------------------------------------------------------------ 右侧栏
-    def _build_sidebar(self, parent):
-        self.var_side = tk.BooleanVar(value=self._sw('sidebar', True))
-        sb = tk.Frame(parent, bg=theme.C_BG)
-        sb.pack(side='right', fill='y', padx=(10, 0))
-
-        # —— 收起态：一条窄边 + 一个 ⚙ 按钮
-        self.sb_closed = tk.Frame(sb, bg=theme.C_CARD)
-        b = ttk.Button(self.sb_closed, text='⚙', width=3,
-                       command=self.open_settings)
-        b.pack(padx=4, pady=(4, 2))
-        Hover(b, lambda: T('打开设置'))
-        tk.Label(self.sb_closed, text=T('设置'), bg=theme.C_CARD, fg=theme.C_SUB,
-                 font=(theme.FONT, 8)).pack(pady=(0, 6))
-
-        # —— 展开态：只有预览。设置已经搬到二级窗口（标题栏的「⚙ 设置」），
-        #    不再挤在侧栏最底部，所以这里不需要滚动容器了。
-        self.sb_open = tk.Frame(sb, bg=theme.C_BG)
-        self._build_preview(self.sb_open)
-        self._side_apply(bool(self.var_side.get()))
-
-    def _side_apply(self, opened: bool):
-        self.var_side.set(opened)
-        if getattr(self, '_side_shown', None) == opened:
-            return
-        try:
-            self.sb_open.pack_forget()
-            self.sb_closed.pack_forget()
-            if opened:
-                # expand=True：让侧栏吃满整个主区高度（否则只到内容的自然高度）
-                self.sb_open.pack(fill='both', expand=True)
-            else:
-                self.sb_closed.pack(fill='y', expand=True)
-            self._side_shown = opened
-        except Exception:
-            pass
-        try:
-            engine.save_config(sidebar=bool(opened))
-        except Exception:
-            pass
 
     @staticmethod
     def _sw(key, default):
@@ -503,30 +519,6 @@ class App:
         except Exception:
             pass
         return default
-
-    def _build_preview(self, parent):
-        card = self._card(parent)
-        card.pack(fill='x')
-        head = tk.Frame(card, bg=theme.C_CARD)
-        head.pack(fill='x', padx=12, pady=(9, 0))
-        tk.Label(head, text=T('模型看到的画面'), bg=theme.C_CARD, fg=theme.C_SUB,
-                 font=(theme.FONT, 10, 'bold')).pack(side='left')
-        b = ttk.Button(head, text='»', width=3,
-                       command=lambda: self._side_apply(False))
-        b.pack(side='right')
-        Hover(b, lambda: T('收起侧栏'))
-        self.lbl_prev = tk.Label(card, text=T('届时显示抽帧缩略图'), bg='#eef1f5',
-                                 fg=theme.C_SUB, font=(theme.FONT, 9), width=34, height=9)
-        self.lbl_prev.pack(padx=12, pady=(6, 6), fill='x')
-        self.lbl_prev_info = tk.Label(card, text='', bg=theme.C_CARD, fg=theme.C_TEXT,
-                                      font=(theme.FONT, 9), wraplength=320, justify='left')
-        self.lbl_prev_info.pack(anchor='w', padx=12, pady=(0, 10))
-        ttk.Button(card, text=T('打开该目录'), command=self.open_dir).pack(
-            padx=12, pady=(0, 6), fill='x')
-        ttk.Button(card, text=T('打开识别报告'), command=self.open_report).pack(
-            padx=12, pady=(0, 6), fill='x')
-        ttk.Button(card, text=T('打开改名台账'), command=self.open_ledger).pack(
-            padx=12, pady=(0, 10), fill='x')
 
     # ------------------------------------------------------------ 新增开关的落盘
     def _save_sw(self, key, var):
@@ -616,54 +608,12 @@ class App:
         except Exception:
             pass
 
-        # ⋯ 更多：核对改名 / 回滚 / 打开目录 / 打开报告 / 打开台账 / 模型管理 / 日志
-        self.btn_more = tk.Menubutton(bar, text=T('⋯ 更多'), relief='flat',
-                                      bg=theme.C_BAR, fg=theme.C_SUB, font=(theme.FONT, 9),
-                                      padx=10, pady=2, direction='above',
-                                      activebackground=theme.C_BTN_H,
-                                      activeforeground=theme.C_TEXT)
-        self.menu_more = tk.Menu(self.btn_more, tearoff=0, bg=theme.C_CARD, fg=theme.C_TEXT,
-                                 activebackground=theme.C_ACCENT_L,
-                                 activeforeground=theme.C_TEXT, borderwidth=1,
-                                 relief='solid', font=(theme.FONT, 9))
-        self.btn_more.configure(menu=self.menu_more)
-        self.btn_more.pack(side='right', padx=(0, 12), pady=3)
-        self._mi = {}
-        self._mi['plan'] = self._mi_add(T('核对并改名…'), self.open_plan)
-        self._mi['rollback'] = self._mi_add(T('回滚本目录改名'), self.on_rollback)
-        self._mi_add(None, None)
-        self._mi_add(T('打开该目录'), self.open_dir)
-        self._mi_add(T('打开识别报告'), self.open_report)
-        self._mi_add(T('打开改名台账'), self.open_ledger)
-        self._mi_add(None, None)
-        self._mi_add(T('模型管理…'), self.open_model_dialog)
-        self._mi_add(None, None)
-        self._mi_add(T('关于'), self.open_about)
-        self._mi['log'] = self._mi_add('', self.toggle_log)
-        self._sync_more_menu()
-
-    def _mi_add(self, label, cmd) -> int:
-        if label is None:
-            self.menu_more.add_separator()
-        else:
-            self.menu_more.add_command(label=label, command=cmd)
-        return max(0, self.menu_more.index('end'))
-
-    def _mi_cfg(self, key, **kw):
-        i = self._mi.get(key)
-        if i is None:
-            return
-        try:
-            self.menu_more.entryconfigure(i, **kw)
-        except Exception:
-            pass
-
-    def _sync_more_menu(self):
-        """菜单里跟着状态变的项：日志展开/收起、危险项禁用。"""
-        if not hasattr(self, '_mi'):        # 状态栏比日志抽屉晚建，那时还没有菜单
-            return
-        opened = bool(getattr(self, 'var_log', None) and self.var_log.get())
-        self._mi_cfg('log', label=(T('隐藏运行日志') if opened else T('显示运行日志')))
+        # 右端只留版本号。原来这里是「⋯ 更多」菜单（11 项），其中 3 个「打开…」
+        # 与侧栏按钮重复、模型管理设置里有、日志点标题就能展开，而真正独有的
+        # 「核对并改名」已经升为界面第 3 步，其余（回滚）挪进核对窗口——整块拆掉。
+        tk.Label(bar, text=(APP_VER if APP_VER.startswith('v') else 'v' + APP_VER),
+                 bg=theme.C_BAR, fg=theme.C_HINT,
+                 font=(theme.FONT, 8)).pack(side='right', padx=(0, 14), pady=5)
 
     # ------------------------------------------------------------ 日志
     def log(self, s, tag=None):
@@ -714,8 +664,8 @@ class App:
     def _set_busy(self, busy: bool):
         """识别过程中锁住目录 / 范围 / 参数，免得中途改了和结果对不上号。
 
-        菜单里的「回滚本目录改名」也要一并锁：它还原的是磁盘上的文件，
-        半路回滚会和正在写的计划表打架。
+        第 3 步「核对并改名」也要锁：它改的是磁盘上的文件，半路进去和正在写的
+        计划表会打架（按钮本身由 _refresh_plan_btn 按 running 维护）。
         """
         spec = ['disabled'] if busy else ['!disabled']
         for w in getattr(self, '_busy_widgets', []):
@@ -723,7 +673,6 @@ class App:
                 w.state(spec)
             except Exception:
                 pass
-        self._mi_cfg('rollback', state=('disabled' if busy else 'normal'))
 
     # ------------------------------------------------------------ 运行状态
     def _set_run_state(self, s, **kw):
@@ -774,7 +723,8 @@ class App:
             return
         try:
             if show:
-                self.btn_stop.pack(side='left', padx=(10, 0))
+                # after=btn_go：进度条先建的，不加这个会排到进度条右边去
+                self.btn_stop.pack(side='left', padx=(10, 0), after=self.btn_go)
             else:
                 self.btn_stop.pack_forget()
             self._stop_shown = show
@@ -782,16 +732,16 @@ class App:
             pass
 
     def _refresh_plan_btn(self):
-        """目录里已经有计划表时，菜单里的「核对并改名…」才可点。"""
+        """目录里已经有计划表时，第 3 步「核对并改名」才可点。"""
         if self.running:
-            self._mi_cfg('plan', state='disabled')
+            self.btn_plan.configure(state='disabled')
             return
         d = os.path.abspath(self.var_dir.get().strip())
         try:
             has = bool(os.path.isdir(d) and engine.load_plan(d))
         except Exception:
             has = False
-        self._mi_cfg('plan', state=('normal' if has else 'disabled'))
+        self.btn_plan.configure(state=('normal' if has else 'disabled'))
 
     def _on_dir_change(self):
         if self.running:
@@ -809,11 +759,12 @@ class App:
         """把「这次到底会处理什么」清楚地写在界面上。"""
         v, p = bool(self.var_video.get()), bool(self.var_photos.get())
         ai = bool(getattr(self, 'var_ai_desc', None) and self.var_ai_desc.get())
-        # 「照片也写内容描述」是「AI描述」的子选项：总开关关着就置灰并清掉勾选
-        if p and ai:
-            self.cb_desc_photo.state(['!disabled'])
-        else:
-            self.cb_desc_photo.state(['disabled'])
+        # 「照片也写内容描述」是「AI描述」的子选项：总开关关着就置灰并清掉勾选。
+        # 勾选框现在住在设置窗口里，窗口没开时是 None，所以要判空。
+        cb = getattr(self, 'cb_desc_photo', None)
+        if cb is not None:
+            cb.state(['!disabled'] if (p and ai) else ['disabled'])
+        if not (p and ai):
             self.var_desc_photo.set(False)
         if not v and not p:
             self.lbl_scope.configure(text=T('两个都没勾选 · 不会处理任何文件'), fg=theme.C_ERR)
@@ -1091,7 +1042,7 @@ class App:
         self._thumbs.clear()
         self._photo_thumbs.clear()   # 文件马上要改名了，旧缩略图全部作废
         self._set_run_state('running')
-        self._mi_cfg('plan', state='disabled')
+        self.btn_plan.configure(state='disabled')
         self._set_busy(True)
         self.pb.configure(value=0, maximum=100)
         self.lbl_prog.configure(text=T('准备中…'))
@@ -1274,30 +1225,17 @@ class App:
         self.tree.yview_moveto(1.0)
         self.show_thumb(r)
 
-    def _info_text(self, r):
-        """右侧详情文字：处理中和事后点行都用它。"""
-        info = (T('%s\n→ %s\n\n地名：%s\n描述：%s\n')
-                % (r.get('old', ''), r.get('new', '') or T('（时间空白，不改名）'),
-                   r.get('place') or T('（无）'), r.get('desc') or T('（无）')))
-        if r.get('kind') == 'photo':
-            if r.get('frames'):
-                # 照片只送原图 1 张（不抽帧、不拼宫格），别显示 0×0 宫格
-                info += (T('\n原图 1 张 / %s / %d token')
-                         % (r.get('how', ''), r.get('tokens', 0)))
-            else:
-                info += T('\n照片：只读拍摄时间与 GPS，不送模型')
-        elif r.get('frames'):
-            info += (T('\n%d 帧 / %s / 宫格 %d×%d / %d token')
-                     % (r.get('frames', 0), r.get('how', ''),
-                        r['grid'][0], r['grid'][1], r.get('tokens', 0)))
-        if r.get('gps_src'):
-            tag = {'gps': T('文件自带 GPS'),
-                   'near': T('相邻文件（可标到镇）'),
-                   'far': T('邻近文件（只能标到城市）')}.get(r.get('gps_level'), '')
-            info += T('\n地名来源：%s%s') % (r['gps_src'], ('　' + tag) if tag else '')
-        if r.get('err'):
-            info += T('\n失败原因：%s') % r['err']
-        return info
+    def _fit_prev(im):
+        """缩略图按 112x54 的框等比缩放——详情条只有 68px 高。"""
+        try:
+            w, h = im.size
+            if not w or not h:
+                return im
+            k = min(_PREV_W / float(w), _PREV_H / float(h))
+            return im.resize((max(1, int(w * k)), max(1, int(h * k))),
+                             Image.Resampling.LANCZOS)
+        except Exception:
+            return im
 
     def _show_photo_file(self, r, idx=None):
         """照片没有模型宫格：点行时直接读原图缩放来显示。
@@ -1328,11 +1266,8 @@ class App:
                     except Exception:
                         pass
                     im = ImageOps.exif_transpose(im)     # 按拍摄方向摆正
-                    w = _PREV_W
-                    if im.width > w:
-                        h = max(1, int(im.height * w / im.width))
-                        im = im.resize((w, h), Image.Resampling.LANCZOS)
-                    ph = ImageTk.PhotoImage(im.convert('RGB'))
+                    im = self._fit_prev(im.convert('RGB'))
+                    ph = ImageTk.PhotoImage(im)
                 self._thumb_ref = ph
                 self.lbl_prev.configure(image=ph, text='',
                                         width=ph.width(), height=ph.height())
@@ -1349,23 +1284,20 @@ class App:
         if not (_HAS_PIL and data):
             return False
         try:
-            im = Image.open(io.BytesIO(data))
-            w = _PREV_W
-            h = max(1, int(im.height * w / im.width))
-            im = im.resize((w, h), Image.Resampling.LANCZOS)
+            im = self._fit_prev(Image.open(io.BytesIO(data)))
             self._thumb_ref = ImageTk.PhotoImage(im)
-            self.lbl_prev.configure(image=self._thumb_ref, text='', width=w, height=h)
+            self.lbl_prev.configure(image=self._thumb_ref, text='',
+                                    width=im.width, height=im.height)
             return True
         except Exception:
             return False
 
     def show_thumb(self, r):
-        if not self._show_photo(r.get('thumb')):
-            return
-        self.lbl_prev_info.configure(text=self._info_text(r))
+        self._show_photo(r.get('thumb'))
+        self._set_detail(r)
 
     def on_pick_row(self, _evt=None):
-        """点结果表里的一行 → 右侧显示它的完整信息（名字被截断时很有用）。"""
+        """点结果表里的一行 → 下方详情条显示原名→新名（名字被截断时很有用）。"""
         sel = self.tree.selection()
         if not sel:
             return
@@ -1378,16 +1310,16 @@ class App:
             return
         r = self._rows.get(idx)
         if not r:
-            self.lbl_prev_info.configure(
-                text=T('%s\n→ %s\n\n（这一条是上次识别留下的，没有更多细节）')
-                     % (vals[1], vals[2]))
+            self.lbl_prev.configure(image='', text=T('无预览'), width=16, height=3)
+            self._thumb_ref = None
+            self._set_detail(None, fallback=T('%s　→　%s（上次识别留下的，没有更多细节）')
+                             % (vals[1], vals[2]))
             return
         if not self._show_photo(self._thumbs.get(idx)):
             if not self._show_photo_file(r, idx):
-                self.lbl_prev.configure(image='', text=T('（没有可预览的画面）'),
-                                        width=34, height=9)
+                self.lbl_prev.configure(image='', text=T('无预览'), width=16, height=3)
                 self._thumb_ref = None
-        self.lbl_prev_info.configure(text=self._info_text(r))
+        self._set_detail(r)
 
     def finish(self):
         self.running = False
@@ -1527,19 +1459,19 @@ class App:
         self.update_server({'up': False, 'models': []}, [], engine.runtime_status())
         self.root.update_idletasks()
         self.log(T('自检：本地模型状态与设备显示正常'), 'ok')
-        _n = self.menu_more.index('end') + 1
-        self.log(T('自检：⋯更多菜单构建正常（%d 项：核对改名/回滚/打开…/模型管理/日志）')
-                 % _n, 'ok' if _n >= 8 else 'warn')
-        self._mi_cfg('plan', state='normal')
-        self._mi_cfg('plan', state='disabled')
-        self._mi_cfg('rollback', state='normal')
-        self._mi_cfg('rollback', state='disabled')
-        self.root.update_idletasks()
-        self.log(T('自检：⋯更多菜单项禁用/启用正常'), 'ok')
-        for op in (True, False, True):
-            self._side_apply(op)
+        _gone = not hasattr(self, 'menu_more') and not hasattr(self, 'sb_open')
+        self.log(T('自检：⋯更多菜单与右侧栏已移除，入口改为第 3 步 + 表格标题行'),
+                 'ok' if _gone else 'err')
+        _seen_plan = []
+        for _st in ('normal', 'disabled', 'normal'):
+            self.btn_plan.configure(state=_st)
             self.root.update_idletasks()
-        self.log(T('自检：右侧栏展开/收起正常（收起只剩 ⚙ 按钮）'), 'ok')
+            _seen_plan.append(str(self.btn_plan.cget('state')))
+        self.log(T('自检：第 3 步「核对并改名」可用/置灰切换 %s') % _seen_plan,
+                 'ok' if _seen_plan == ['normal', 'disabled', 'normal'] else 'err')
+        self._set_detail(self._rows.get(1) if self._rows else None)
+        self.root.update_idletasks()
+        self.log(T('自检：选中详情条首行 = %r') % self.lbl_d1.cget('text')[:28], 'ok')
         for op in (True, False, True):
             self._log_apply(op)
             self.root.update_idletasks()
