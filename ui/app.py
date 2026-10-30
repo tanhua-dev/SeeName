@@ -146,8 +146,11 @@ class App:
 
     def on_close(self):
         for window in self.root.winfo_children():
-            if isinstance(window, (ModelDialog, AccelerationDialog)):
-                window.cancel_download.set()
+            if isinstance(window, (ModelDialog, AccelerationDialog, SettingsDialog)):
+                try:
+                    window.stop()       # 只停下载，不弹确认：主窗口要关了
+                except Exception:
+                    pass
         try:
             g = self.root.geometry()
             m = re.match(r'^(\d+)x(\d+)', g)

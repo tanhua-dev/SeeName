@@ -885,3 +885,79 @@ EN.update({
     '2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。可在“GPU 加速”中配置设备。':
         'Both 2B and 4B offer Q4 / Q8 models with matching Q8 projectors. Configure devices under GPU acceleration.',
 })
+
+# ---- 下载状态机与进度文案（模型列表 / GPU 组件共用同一套）----
+# 两个下载入口以前各写一套说法：「取消」在一处报红字、在另一处叫「已暂停」，
+# 同一个动作有三种叫法。这里统一成 下载 / 暂停 / 继续 / 重试 / 使用 五个动词。
+EN.update({
+    '暂停': 'Pause',
+    '继续': 'Resume',
+    '重试': 'Retry',
+    '查看': 'Open',
+    '继续下载': 'Resume download',
+    '下载并启用': 'Download and enable',
+    '已启用': 'Enabled',
+    '已暂停': 'Paused',
+    '已完成': 'Done',
+    '失败': 'Failed',
+    '校验中': 'Verifying',
+    '可继续': 'Resumable',
+    '组件版本': 'Component version',
+    '未知原因': 'unknown reason',
+    '下载中 %d%%': 'Downloading %d%%',
+    '失败：%s': 'Failed: %s',
+    '已下载 %s / %s': 'Downloaded %s / %s',
+    '剩余 %s': '%s left',
+    '已下载 %s / %s · 进度已保留': 'Downloaded %s / %s · progress kept',
+    '已下载 %s / %s，点「继续」接着下': 'Downloaded %s / %s — press Resume to continue',
+    '正在校验文件完整性，这一步进度不动是正常的':
+        'Verifying file integrity — the bar staying still here is expected',
+    '已暂停，进度已保留；点「继续」接着下。':
+        'Paused. The partial file is kept — press Resume to continue.',
+    '已安装 · 占用 %s': 'Installed · %s on disk',
+    '没下完 · 已有 %s / %s（%d%%）': 'Incomplete · %s of %s already on disk (%d%%)',
+    '没下完 · 已有 %s / %s': 'Incomplete · %s of %s already on disk',
+    '可下载 · %s': 'Available · %s',
+    '有别的下载正在进行，等它结束再试。':
+        'Another download is running — try again once it finishes.',
+    '正在暂停 %s…': 'Pausing %s…',
+    '正在停止下载…': 'Stopping the download…',
+    '正在下载 %s 组件…': 'Downloading the %s component…',
+    '正在暂停 %s 组件的下载…': 'Pausing the %s component download…',
+    '正在启用 %s…': 'Enabling %s…',
+    '正在切换到 CPU…': 'Switching to CPU…',
+    '当前设备：%s': 'Current device: %s',
+    '没有可用的 %s 组件版本。': 'No usable %s component version.',
+    '无法启动本地推理服务': 'Could not start the local inference service',
+    '%s 组件已就绪。': 'The %s component is ready.',
+    '%s 已启用。': '%s enabled.',
+    '%s 已启用 · 识别时会自动加载显卡。':
+        '%s enabled · the GPU loads automatically when recognition starts.',
+    '%s 组件已准备好，重启 SeeName 后生效。':
+        'The %s component is ready and takes effect after restarting SeeName.',
+    '已启用 · 识别时会自动加载这块显卡':
+        'Enabled · this GPU loads automatically when recognition starts',
+    '已安装，还没启用 · 点右边的按钮启用':
+        'Installed but not enabled — use the button on the right',
+    '未安装 · 需要下载 %s': 'Not installed · %s to download',
+    '上次加载失败：%s': 'Last load failed: %s',
+    '继续下载 %s 加速组件？\n已下载 %s / %s，会从这里接着下。':
+        'Resume the %s component download?\n%s of %s already on disk; it continues from there.',
+    '下载 %s 加速组件（%s）并启用？':
+        'Download and enable the %s acceleration component (%s)?',
+    '继续下载 %s？\n已下载 %s / %s，会从这里接着下。\n\n保存到：\n%s':
+        'Resume downloading %s?\n%s of %s already on disk; it continues from there.\n\nSaved to:/n%s',
+    '下载 %s（%s）到：\n%s\n\n下载中可以随时暂停，之后点「继续」会接着下。':
+        'Download %s (%s) to:/n%s/n/nYou can pause at any time; pressing Resume later continues from there.',
+    '下载完成，点这一行的「使用」即可切换到它。':
+        'Download complete — press Use on this row to switch to it.',
+    '模型下载结束：%s': 'Model download finished: %s',
+    '模型库切换失败': 'Could not switch the model library',
+    '未检测到 NVIDIA 显卡 · 建议用 Vulkan（兼容 Intel / AMD）或 CPU':
+        'No NVIDIA GPU found · use Vulkan (Intel / AMD compatible) or CPU',
+    '%s · 可用显存 %.1f / %.1f GB': '%s · %.1f / %.1f GB VRAM free',
+    ' · CUDA 可用': ' · CUDA usable',
+    ' · 偏紧，4B 模型建议用 Vulkan（或先关掉占显存的程序）':
+        ' · tight; use Vulkan for the 4B model (or close VRAM-heavy apps first)',
+    ' · 不足，建议用 Vulkan': ' · too little; use Vulkan',
+})

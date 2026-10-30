@@ -21,6 +21,8 @@ from __future__ import annotations
 import subprocess
 import tkinter as tk
 
+from strings import T
+
 from . import theme
 
 CRE = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
@@ -333,11 +335,18 @@ class ChoiceRow(tk.Frame):
 
 # --------------------------------------------------------------- 显卡探测
 _GPU_CACHE: dict = {}
+_GPU_TS = 0.0
+_GPU_TTL = 20.0     # nvidia-smi 最长会卡 8 秒，缓存一会儿；界面每 120ms 刷一次不能真去问
 
 
-def gpu_memory() -> dict:
-    """Best-effort VRAM probe (nvidia-smi). Cached name/total, fresh free value."""
+def gpu_memory(ttl=_GPU_TTL) -> dict:
+    """Best-effort VRAM probe (nvidia-smi). 名称/总量缓存更久，空闲显存带 TTL。"""
+    global _GPU_TS
+    import time
+    now = time.time()
     info = dict(_GPU_CACHE)
+    if info and now - _GPU_TS < ttl:
+        return info
     try:
         p = subprocess.run(
             ['nvidia-smi', '--query-gpu=name,memory.total,memory.free',
@@ -351,6 +360,7 @@ def gpu_memory() -> dict:
                         'total_mb': int(float(parts[1])),
                         'free_mb': int(float(parts[2]))}
                 _GPU_CACHE.update(info)
+                _GPU_TS = now
     except Exception:
         pass
     return info
@@ -360,12 +370,12 @@ def gpu_advice(recommend_mb=4500) -> str:
     """One-line verdict shown in the acceleration panel."""
     g = gpu_memory()
     if not g.get('name'):
-        return '未检测到 NVIDIA 显卡 · 建议用 Vulkan（兼容 Intel / AMD）或 CPU'
+        return T('未检测到 NVIDIA 显卡 · 建议用 Vulkan（兼容 Intel / AMD）或 CPU')
     free = g.get('free_mb', 0) / 1024.0
     total = g.get('total_mb', 0) / 1024.0
-    head = '%s · 可用显存 %.1f / %.1f GB' % (g['name'], free, total)
+    head = T('%s · 可用显存 %.1f / %.1f GB') % (g['name'], free, total)
     if g.get('free_mb', 0) >= recommend_mb:
-        return head + ' · CUDA 可用'
+        return head + T(' · CUDA 可用')
     if g.get('free_mb', 0) >= 3000:
-        return head + ' · 偏紧，4B 模型建议用 Vulkan（或先关掉占显存的程序）'
-    return head + ' · 不足，建议用 Vulkan'
+        return head + T(' · 偏紧，4B 模型建议用 Vulkan（或先关掉占显存的程序）')
+    return head + T(' · 不足，建议用 Vulkan')

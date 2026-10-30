@@ -225,9 +225,13 @@ class SettingsDialog(tk.Toplevel):
         self.on_close()
         self.app.open_model_dialog()
 
-    def on_close(self):
+    def stop(self):
+        """主窗口关闭 / 切到别的二级窗口时先停掉组件下载。"""
         try:
             self.panel.stop()
         except Exception:
             pass
+
+    def on_close(self):
+        self.stop()
         self.destroy()
