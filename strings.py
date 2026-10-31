@@ -463,12 +463,13 @@ EN.update({
     '照片/视频 AI 改名引擎（无界面）':
         'Photo/video AI renamer engine (no GUI)',
     '照片也写内容描述': 'Describe photos too',
-    '照片也调模型写描述（每张约 11 秒，很慢）':
-        'Also run the model to describe photos (~11s each, slow)',
-    '照片：写内容描述，约 11 秒/张':
-        'Photos: described by the model, ~11s each',
     '照片：只读拍摄时间和 GPS，秒级':
         'Photos: only EXIF time & GPS, seconds',
+    # S-14：「约 11 秒」是写死的，换台机器就是错的（1660Ti 上 Vulkan 5.3s、
+    # CUDA 10s、纯 CPU 一分钟以上）。只说"看机器"，不承诺秒数。
+    '速度看机器：有显卡十几秒一张，纯 CPU 会慢不少':
+        'Speed depends on your machine: seconds per item with a GPU, '
+        'much slower on CPU only',
     '状态': 'Status',
     '状态：%s': 'Status: %s',
     '现在打开「模型管理」下载它吗？\n（模型文件约 3–8 GB，只下载一次）':
@@ -520,8 +521,6 @@ EN.update({
     '视频 %d 个': '%d videos',
     '视频或照片': 'Videos or photos',
     '视频改名助手': 'Video renamer',
-    '视频：抽帧送模型，约 11 秒/条':
-        'Videos: frames sent to the model, ~11s each',
     '计划表：%s': 'Plan: %s',
     '识别中 %d/%d': 'Analyzing %d/%d',
     '识别中…': 'Analyzing…',
@@ -573,8 +572,6 @@ EN.update({
     '（没有可预览的画面）': '(no preview available)',
     '（照片识别失败：%r）': '(photo analysis failed: %r)',
     '（空）': '(blank)',
-    '；已开启「照片也写描述」，每张约 11 秒':
-        '; photo descriptions enabled, ~11s each',
 })
 
 # ---------------------------------------------------------------- 组合 key
@@ -1015,4 +1012,107 @@ EN.update({
     '选中详情条首行 = %r': 'detail strip first line = %r',
     '⋯更多菜单与右侧栏已移除，入口改为第 3 步 + 表格标题行':
         'the More menu and the sidebar are gone — entry points are step 3 and the table header',
+})
+
+# ---------------------------------------------------------------- 小白版界面（B2/B3/B4）
+# 主界面两步化、表格四列、设置窗重排之后新增的文案，连同之前几轮漏翻的
+# 设置项标签一并补齐。刻意**没有**翻译的三类，见文件头说明：提示词、
+# DESC_BAD 里的判定词、自检用的示例数据。
+EN.update({
+    '● 就绪': '● Ready',
+    '● 正在识别…': '● Analyzing…',
+    '● 正在识别 %d/%d': '● Analyzing %d/%d',
+    '● 已停止 · %d/%d': '● Stopped · %d/%d',
+    '三步就能改好名字': 'Rename in three steps',
+    '选文件夹': 'Pick a folder',
+    '点那个大按钮，选一个装着照片或视频的文件夹。':
+        'Click the big button and pick a folder with photos or videos.',
+    '点开始识别': 'Click Start',
+    '模型自己看画面，给每个文件起名字。第一次会慢一些。':
+        'The model looks at the picture and names each file. The first run is slower.',
+    '核对并改名': 'Review & rename',
+    '确认没问题就点应用；想改哪一行，直接点格子改。':
+        'Click Apply when it looks right; to fix a row, just click its cell.',
+    '不再显示': "Don't show again",
+    '知道了': 'Got it',
+    '选好文件夹，点「开始识别」，剩下的交给我':
+        'Pick a folder, click Start — I will take it from there',
+    '📁 选择照片文件夹': '📁 Choose photo folder',
+    '📁 %s · %d 张': '📁 %s · %d items',
+    '📁 %s · 空文件夹': '📁 %s · empty folder',
+    '这个文件夹里没有照片或视频': 'No photos or videos in this folder',
+    '视频：抽帧交给模型看': 'Videos: frames sent to the model',
+    '照片：模型写内容描述': 'Photos: model writes a description',
+    '平均约 %.1f 秒/张，还剩约 %s': 'avg %.1fs per item, about %s left',
+    '已用 %s': '%s elapsed',
+    '✓ 已改名': '✓ Renamed',
+    '没认出来，点我看看': "Couldn't read it — click to see",
+    '改名失败，点我看看': 'Rename failed — click to see',
+    '点我补时间': 'Click to add time',
+    '这一行没有更多细节（可能是上次识别留下的）':
+        'No further detail for this row (it may be left over from an earlier run)',
+    '识别完成后点亮': 'Unlocks when analysis finishes',
+    '有 %d 张没认出来，已跳过': '%d items could not be read and were skipped',
+    '这些文件保持原名不动。可以先「重试」，还不行就把日志复制给作者。':
+        'These files keep their names. Try "Retry" first; if it still fails, '
+        'copy the log for the author.',
+    '复制日志发给作者': 'Copy log for the author',
+    '日志已复制，粘贴给作者就行': 'Log copied — just paste it to the author',
+    '%d 张，%d 张待改名，%d 张不用改': '%d items, %d to rename, %d unchanged',
+    '，%d 张没认出来': ', %d could not be read',
+    '查看详细报告': 'View full report',
+    '描述：%s': 'Description: %s',
+    '处理范围': 'Scope',
+    '关掉就不调用模型，只按拍摄时间和 GPS 命名，秒级完成。':
+        'Off = no model call; names come from capture time and GPS, done in seconds.',
+    '当前模型': 'Current model',
+    '模型分两部分，放在同一个文件夹就行，点「模型管理」会自动配好。':
+        'The model comes in two parts — just keep them in one folder; '
+        'the model manager sets it up for you.',
+    '加速方式': 'Acceleration',
+    '换一种': 'Change',
+    '用哪个': 'Which one',
+    '只用 CPU': 'CPU only',
+    '检测到显卡，已为你选用 %s 加速': 'GPU detected — using %s acceleration',
+    '没检测到可用的显卡加速，先用 CPU 跑（会慢一些）':
+        'No usable GPU acceleration — running on CPU (slower)',
+    '识别': 'Analysis',
+    '自动：按视频时长挑 2~8 帧，够用就别改。':
+        'Auto: 2-8 frames depending on clip length. Leave it alone unless you need to.',
+    '个（0 = 全部）': 'items (0 = all)',
+    '不勾选时，名字已经是「视/图 + 日期」格式的文件会跳过。':
+        'When unchecked, files already named "V/P + date" are skipped.',
+    '地名与定位': 'Place names & location',
+    '关着就是纯离线，一个网络包都不发。开启后会用在线地图接口，地址更准。':
+        'Off is fully offline — not a single packet leaves. On uses an online '
+        'map service for more accurate addresses.',
+    '国内坐标靠它查街道级地址，在 lbs.amap.com 免费申请；不填就一直用离线库。':
+        'Used for street-level addresses in mainland China; free key at lbs.amap.com. '
+        'Leave blank to stay on the offline database.',
+    '界面语言': 'Language',
+    '切换后需要重启软件生效。': 'Restart the app to apply.',
+    'Vulkan（推荐）': 'Vulkan (recommended)',
+    'NVIDIA / AMD / Intel 都能用，显存不够时可借用系统内存':
+        'Works on NVIDIA / AMD / Intel; borrows system memory when VRAM runs short',
+    'CUDA（实验）': 'CUDA (experimental)',
+    '仅 NVIDIA；显存不足时反而更慢，没有 tensor core 的老卡不建议':
+        'NVIDIA only; slower when VRAM is short — not advised on old cards '
+        'without tensor cores',
+    '装了才能用显卡；不装就用 CPU。显卡驱动要自己装好。':
+        'Install one to use the GPU; otherwise the CPU is used. '
+        'GPU drivers must be installed separately.',
+    '使用 CPU（不加速）': 'Use CPU (no acceleration)',
+    '启用': 'Enable',
+    '下载来源': 'Download source',
+    '主模型和配套 mmproj 要放在同一目录。没有模型时先在这里下载一个。':
+        'The main model and its mmproj must sit in the same folder. '
+        'If you have none yet, download one here.',
+    '模型库已切换': 'Models folder switched',
+    '网络': 'Network',
+    '正常': 'OK',
+    '异常': 'Error',
+    '开': 'On',
+    '关': 'Off',
+    '    联网精确定位当前：%s（开关默认关闭，关闭时一个网络包都不发）':
+        '    Online geocoding now: %s (off by default — no packets are sent while off)',
 })

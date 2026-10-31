@@ -262,9 +262,18 @@ class TaskCard(tk.Frame):
         self.badge = tk.Label(head, bg=bg, fg=theme.C_HINT, font=(theme.FONT, 9, 'bold'))
         self.badge.pack(side='right')
 
-        self.sub = tk.Label(self, bg=bg, fg=theme.C_SUB, font=(theme.FONT, 9),
-                            anchor='w', justify='left', wraplength=wrap)
-        self.sub.pack(fill='x', padx=theme.S3, pady=(1, 0))
+        # 说明文字和按钮左右并排（S-23）：原来文字占满整行、按钮另起一行靠右，
+        # 中间那一大块空白既费高度又让人以为卡片没做完。现在按钮挂在文字右侧、
+        # 垂直居中，几张卡片的按钮落在同一条竖线上，扫一眼就能点。
+        self.body = tk.Frame(self, bg=bg)
+        self.body.pack(fill='x', padx=theme.S3, pady=(1, 0))
+        self.btns = tk.Frame(self.body, bg=bg)
+        # 先 pack 右边：后 pack 的 expand 控件才会把剩余的宽度拿走
+        self.btns.pack(side='right', padx=(theme.S2, 0))
+        self.sub = tk.Label(self.body, bg=bg, fg=theme.C_SUB, font=(theme.FONT, 9),
+                            anchor='w', justify='left',
+                            wraplength=max(180, wrap - 130))
+        self.sub.pack(side='left', fill='x', expand=True)
 
         # 调用方可以往里塞额外控件（例如版本选择）；没有子控件时高度为 0
         self.extra = tk.Frame(self, bg=bg)
@@ -277,10 +286,9 @@ class TaskCard(tk.Frame):
         self.bar_text = tk.Label(self, bg=bg, fg=theme.C_SUB, font=(theme.FONT, 9),
                                  anchor='w', justify='left', wraplength=wrap)
 
+        # 按钮搬到上面去了，这一行只剩「还剩多少 MB / 多少 MB/s」
         foot = tk.Frame(self, bg=bg)
         foot.pack(fill='x', padx=theme.S3, pady=(theme.S1, theme.S2))
-        self.btns = tk.Frame(foot, bg=bg)
-        self.btns.pack(side='right')
         self.metrics = tk.Label(foot, bg=bg, fg=theme.C_SUB, font=(theme.FONT, 9),
                                 anchor='w', justify='left', wraplength=wrap)
         self.metrics.pack(side='left', fill='x', expand=True)
@@ -324,7 +332,8 @@ class TaskCard(tk.Frame):
         text, action, enabled = spec[0], spec[1], spec[2]
         self._actions[role] = action
         widget.configure(text=text, state='normal' if enabled else 'disabled')
-        widget.pack(side='right', padx=(theme.S2, 0))
+        # 竖着排：一行放得下就一个按钮，两行（主 + 次）也不会把文字挤窄
+        widget.pack(side='top', anchor='e', pady=(0, theme.S1))
 
     def _fire(self, role):
         action = self._actions.get(role)

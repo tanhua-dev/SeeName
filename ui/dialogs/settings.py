@@ -19,7 +19,7 @@ from strings import T
 from core.features import metadata_writing_enabled
 from .. import theme
 from ..common import APP_TITLE
-from ..controls import CheckRow, ChoiceRow, ScrollArea, fit_to_content
+from ..controls import CheckRow, ChoiceRow, ScrollArea, fit_to_content, work_area
 from .acceleration import AccelerationPanel
 
 
@@ -36,6 +36,7 @@ class SettingsDialog(tk.Toplevel):
 
         head = tk.Frame(self, bg=theme.C_BG)
         head.pack(fill='x', padx=theme.S4, pady=(theme.S3, theme.S2))
+        self._head = head
         tk.Label(head, text=T('⚙ 设置'), bg=theme.C_BG, fg=theme.C_TEXT,
                  font=(theme.FONT, 15, 'bold')).pack(anchor='w')
         tk.Label(head, text=T('上面三项改完就够用；技术项都在「高级」里，不看也不影响。'),
@@ -49,6 +50,12 @@ class SettingsDialog(tk.Toplevel):
         self._build_scope(body)
         self._build_model(body)
         self._build_save(body)
+        # 三组常用项建完、高级还没建 —— 此刻量到的就是「最小高度」该保证的内容
+        try:
+            self.update_idletasks()
+            self._common_h = body.winfo_reqheight()
+        except Exception:
+            self._common_h = 380
 
         self._build_advanced(body)
         scroll.bind_wheel()
@@ -56,13 +63,14 @@ class SettingsDialog(tk.Toplevel):
 
         foot = tk.Frame(self, bg=theme.C_BG)
         foot.pack(fill='x', padx=theme.S4, pady=theme.S3)
-        ttk.Button(foot, text=T('模型管理…'), command=self.open_models).pack(side='left')
+        self._foot = foot
         ttk.Button(foot, text=T('关于'), style='Link.TButton',
                    command=lambda: app.open_about()).pack(side='left', padx=(10, 0))
         ttk.Button(foot, text=T('关闭'), command=self.on_close).pack(side='right')
 
         fit_to_content(self, design_w=720, design_h=700, min_w=640, min_h=520)
         self.refresh()
+        self._fit_height()
         if focus_section:
             self.after(80, lambda: self.focus_section(focus_section))
 
@@ -81,6 +89,59 @@ class SettingsDialog(tk.Toplevel):
             total = max(1, self._scroll.inner.winfo_height())
             y = w.winfo_y() / float(total)
             self._scroll.canvas.yview_moveto(min(1.0, max(0.0, y - 0.02)))
+        except Exception:
+            pass
+
+    def _fit_height(self):
+        """窗口高度跟着内容走（S-21）。
+
+        原来写死 720×700：常用三组只有半屏高，底部空着约 140px；点开高级
+        以后内容翻倍，又得靠滚动条一格格拖。这里按「内容高度 + 窗口边框
+        那些非滚动部分」算一次，夹在三个约束之间：
+
+        * 下限：三组常用项必须完整看得见（``_common_h``，高级未建时量的）；
+        * 上限：屏幕可用高度的 92%，再高窗口标题栏就跑到屏幕外了；
+        * 中间：内容多高就多高——内容少时窗口不留空，内容多时也不硬撑。
+        """
+        try:
+            self.update_idletasks()
+            _sw, sh = work_area(self)
+            cap_h = int(sh * 0.92)
+            # 非滚动部分（标题 + 页脚 + 内边距）的高度：建窗后不变，量一次缓存。
+            # 用「请求高度相减」而不是 winfo_height()——窗口还没映射时后者是 1，
+            # 差值会算出一个荒唐的 500，窗口就被撑到屏幕底了。
+            chrome = getattr(self, '_chrome_h', None)
+            if chrome is None:
+                chrome = self.winfo_reqheight() - self._scroll.winfo_reqheight()
+                self._chrome_h = chrome
+            floor_h = min(cap_h, max(420, self._common_h + chrome))
+            need = self._scroll.inner.winfo_reqheight() + chrome
+            h = max(floor_h, min(cap_h, need))
+            w = self.winfo_width()
+            if w < 100:
+                w = max(self.winfo_reqwidth(), 640)
+            x, y = self.winfo_x(), self.winfo_y()
+            # 长高时往下顶会顶出屏幕，往回收一点（居中会重新落到可视区里）
+            if y + h > sh:
+                y = max(0, sh - h)
+            self.geometry('%dx%d+%d+%d' % (w, h, x, y))
+        except Exception:
+            pass
+
+    def _scroll_to_adv(self):
+        """把滚动视图带到高级区顶部（S-22）。
+
+        不这么做的话，点开高级只是「箭头变了个方向」，新内容全在视口下方，
+        看起来像按钮没反应。用 rooty 差值而不是 winfo_y：按钮在分组条里，
+        分组条才是 body 的直接子控件，直接取 y 会少算一层。
+        """
+        try:
+            self.update_idletasks()
+            inner = self._scroll.inner
+            offset = self.btn_adv.winfo_rooty() - inner.winfo_rooty()
+            total = max(1, inner.winfo_height())
+            self._scroll.canvas.yview_moveto(
+                max(0.0, min(1.0, offset / float(total) - 0.02)))
         except Exception:
             pass
 
@@ -170,8 +231,77 @@ class SettingsDialog(tk.Toplevel):
         app.cb_model.pack(side='right', padx=(0, theme.S2), fill='x', expand=True)
         app.cb_model.bind('<<ComboboxSelected>>',
                           lambda e: app.choose_model(app.var_model.get()))
-        self._hint(card, T('主模型和配套 mmproj 要放在同一目录；点「模型管理」可以下载 4B / 2B 模型。')).pack(
+        # S-16：mmproj / GGUF 这些词对普通人是天书，说「分两部分、放一起」就够
+        self._hint(card, T('模型分两部分，放在同一个文件夹就行，点「模型管理」会自动配好。')).pack(
             fill='x', pady=(theme.S1, 0))
+        self._build_accel_mode(card)
+
+    # ---------------------------------------------------------------- 加速方式
+    def _build_accel_mode(self, card):
+        """「加速方式」：默认自动，检测结果直接写出来，技术选项藏在小字后面（S-15）。
+
+        发行包不带 GPU 运行库，所以默认走 CPU——但这不是「假设你没独显」。
+        这里把检测结果摊开说：有就用上，没有就说清楚，并给一个「换一种」让
+        想手动指定的人展开 CUDA / Vulkan / 只用 CPU。
+        """
+        from tkinter import StringVar
+        self.var_accel_choice = StringVar(value=T('自动'))
+        row = tk.Frame(card, bg=theme.C_CARD)
+        row.pack(fill='x', pady=(theme.S2, 0))
+        tk.Label(row, text=T('加速方式'), bg=theme.C_CARD, fg=theme.C_TEXT,
+                 font=(theme.FONT, 10)).pack(side='left', padx=(0, theme.S2))
+        self.lbl_accel = tk.Label(row, text=self._accel_text(), bg=theme.C_CARD,
+                                  fg=theme.C_SUB, font=(theme.FONT, 9),
+                                  anchor='w', justify='left')
+        self.lbl_accel.pack(side='left', fill='x', expand=True)
+        ttk.Button(row, text=T('换一种'), style='Link.TButton',
+                   command=self._toggle_accel_choices).pack(side='right')
+        # 默认收起：只显示检测结论，不显示 CUDA / Vulkan 这些词
+        self.accel_box = tk.Frame(card, bg=theme.C_CARD)
+        self.choice_accel = ChoiceRow(
+            self.accel_box, T('用哪个'),
+            [(T('自动'), T('自动')), ('CUDA', 'CUDA'), ('Vulkan', 'Vulkan'),
+             (T('只用 CPU'), T('只用 CPU'))],
+            self.var_accel_choice, command=self._on_accel_pick)
+        self.choice_accel.pack(fill='x')
+
+    def _accel_text(self):
+        """一句话说清现在用的是哪条路——不写「自动」这种看不出结果的话。"""
+        name = ''
+        try:
+            name = engine.accelerator.active_name or ''
+        except Exception:
+            name = ''
+        if name:
+            return T('检测到显卡，已为你选用 %s 加速') % name
+        return T('没检测到可用的显卡加速，先用 CPU 跑（会慢一些）')
+
+    def _toggle_accel_choices(self):
+        try:
+            if self.accel_box.winfo_manager():
+                self.accel_box.pack_forget()
+            else:
+                self.accel_box.pack(fill='x', pady=(theme.S2, 0))
+        except Exception:
+            pass
+        # 展开/收起都会改变内容高度，两边都要重新量
+        self._fit_height()
+
+    def _on_accel_pick(self, *a):
+        want = self.var_accel_choice.get()
+        try:
+            if want == T('自动'):
+                engine.auto_pick_accelerator()
+            elif want == T('只用 CPU'):
+                engine.accelerator.enable_cpu()
+            else:
+                engine.accelerator.enable(want, True)
+        except Exception:
+            pass
+        try:
+            self.lbl_accel.configure(text=self._accel_text())
+        except Exception:
+            pass
 
     # ---------------------------------------------------------------- 保存方式
     def _build_save(self, body):
@@ -242,8 +372,12 @@ class SettingsDialog(tk.Toplevel):
         self._build_lang(self.adv)
         self._apply_adv(opened)
 
-    def _apply_adv(self, opened: bool):
-        """展开/收起高级区。只改界面，不写盘。"""
+    def _apply_adv(self, opened: bool, scroll_to: bool = False):
+        """展开/收起高级区。只改界面，不写盘。
+
+        ``scroll_to=True``（用户亲手点的）才把视口跟过去；启动时按上次的记忆
+        恢复展开状态不该抢滚动位置——那会让人以为窗口"自己跳了一下"。
+        """
         self.var_adv.set(bool(opened))
         try:
             if opened:
@@ -253,10 +387,14 @@ class SettingsDialog(tk.Toplevel):
             self.btn_adv.configure(text=(T('▾ 高级设置') if opened else T('▸ 高级设置')))
         except Exception:
             pass
+        self._fit_height()
+        if opened and scroll_to:
+            # 等一帧再滚：pack 之后 inner 的高度还没结算，yview_moveto 会算错位置
+            self.after(60, self._scroll_to_adv)
 
     def _toggle_adv(self):
         opened = not bool(self.var_adv.get())
-        self._apply_adv(opened)
+        self._apply_adv(opened, scroll_to=opened)
         try:
             engine.save_config(adv_open=opened)
         except Exception:
