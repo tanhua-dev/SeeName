@@ -317,6 +317,39 @@ class PlanDialog(tk.Toplevel):
         self._page_info(len(vis), n_page, lo)
         self._stat()
 
+    def focus_row(self, index):
+        """翻到某一行并滚到它跟前，顺手加个描边。
+
+        主界面点状态列的「点我补时间 / 点我看看」时走这里：用户点的是哪一行，
+        打开核对窗就该停在哪一行，而不是从第 1 页第 1 行开始自己找。
+        """
+        try:
+            vis = self._filtered()
+        except Exception:
+            return
+        pos = None
+        for i, row in enumerate(vis):
+            if row['it'].get('index') == index:
+                pos = i
+                break
+        if pos is None:
+            return
+        self.page = pos // max(1, self.page_size)
+        try:
+            self._render_page()
+            self.update_idletasks()
+            fr = vis[pos].get('frame')
+            if fr is None:
+                return
+            total = max(1, self.rows_box.winfo_height())
+            y = fr.winfo_y() / float(total)
+            self.canvas.yview_moveto(max(0.0, min(1.0, y - 0.1)))
+            fr.configure(highlightthickness=2,
+                         highlightbackground=theme.C_ACCENT,
+                         highlightcolor=theme.C_ACCENT)
+        except Exception:
+            pass
+
     def _build_pagebar(self):
         bar = tk.Frame(self, bg=theme.C_BG)
         bar.pack(fill='x', padx=14, pady=(6, 0))

@@ -19,7 +19,7 @@ from strings import T
 from core.features import metadata_writing_enabled
 from . import theme
 from .common import APP_AUTHOR, APP_SUB, APP_TITLE, APP_VER, asset_path, cut, fmt_dur, open_path
-from .widgets import Hover, Tip, Toast, DisabledTip
+from .widgets import Hover, Tip, Toast, DisabledTip, RowPreview
 from .controls import CheckRow
 from .dialogs.information import AboutDialog, HelpDialog, help_path
 from .dialogs.models import ModelDialog
@@ -55,6 +55,7 @@ class App:
         self._models: list[str] = []
         self._plan: list = []           # 最近一次识别出的计划表
         self._rows: dict = {}           # index -> 结果 dict（点行看详情）
+        self._iid_idx: dict = {}        # Treeview iid -> index（点状态列定位行）
         self._thumbs: dict = {}         # index -> 宫格图 bytes
         self._photo_thumbs: dict = {}   # index -> 照片缩略图 PhotoImage（点行时现读，缓存复用）
         self._tip = None                # 悬浮提示（文件名被截断时用）
@@ -353,30 +354,24 @@ class App:
         tk.Label(head, text=T('处理结果'), bg=theme.C_CARD, fg=theme.C_SUB,
                  font=(theme.FONT, 10, 'bold')).pack(side='left')
         # 三个「打开」入口原来在「⋯更多」菜单里，和侧栏的按钮重复。
-        # 收进表格标题行右侧：看得见、不占地方、也不用记菜单。
-        for txt, cmd in ((T('改名台账'), self.open_ledger),
-                         (T('识别报告'), self.open_report),
-                         (T('打开目录'), self.open_dir)):
-            ttk.Button(head, text=txt, style='Link.TButton',
-                       command=cmd).pack(side='right', padx=(10, 0))
+        # 表头只留「打开目录」。改名台账搬进核对窗口页脚（那里本来就在操作
+        # 同一个目录），识别报告改由跑完的浮条里「查看详细报告」进。
+        ttk.Button(head, text=T('打开目录'), style='Link.TButton',
+                   command=self.open_dir).pack(side='right', padx=(10, 0))
 
-        cols = ('no', 'old', 'new', 'place', 'desc', 'sec', 'st')
-        heads = ('#', T('原文件名'), T('新文件名'), T('地名'), T('描述'), T('耗时'), T('状态'))
-        # 列宽不再写死。原来固定 (36,172,196,116,108,46,56)=730，而 7 列真实需要
-        # 956（光「新文件名」一列就要 270），所以两个文件名一直在被截断——这才是
-        # 「列宽看着不对」的真因，跟画不画线关系不大。
+        # 7 列压成 4 列：保留原文件名（用户要能一眼看出这是哪张），
+        # 地名并进新文件名（新名字本来就是「日期_时间_地名_内容」），
+        # 耗时改由进度条旁边的动态平均说明，不再单占一列。
+        cols = ('old', 'new', 'desc', 'st')
+        heads = (T('原文件名'), T('新文件名'), T('描述'), T('状态'))
         samples = {
-            'no': ('999',),
             'old': ('VID_20240115_183022_00_012.mp4',),
             'new': ('2024-01-15_18-30-22_西湖区_湖边长椅.mp4',),
-            'place': ('杭州市西湖区北山街道',),
             'desc': ('一名男子坐在湖边长椅上',),
-            'sec': ('12.4s',),
-            'st': ('已改名',),
+            'st': ('没认出来，点我看看',),
         }
-        bounds = {'no': (34, 46), 'old': (150, 300), 'new': (170, 320),
-                  'place': (90, 190), 'desc': (80, 220), 'sec': (44, 62),
-                  'st': (56, 84)}
+        bounds = {'old': (150, 320), 'new': (170, 340),
+                  'desc': (120, 320), 'st': (70, 150)}
         widths = self._fit_columns(heads, samples, bounds)
         self._cols = cols
         self._col_bounds = bounds
@@ -394,7 +389,7 @@ class App:
             # minwidth 留到下限：窗口拉得很窄时先压缩地名/描述，再不够才出
             # 横向滚动条，绝不把两个文件名截断
             self.tree.column(c, width=widths[c], minwidth=bounds[c][0],
-                             anchor='w', stretch=(c in ('place', 'desc')))
+                             anchor='w', stretch=(c == 'desc'))
         vs = ttk.Scrollbar(wrap, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=vs.set)
         # 横向滚动只在真放不下时出现，平时不白占 16px（见 _sync_hscroll）
@@ -409,8 +404,12 @@ class App:
         self.tree.tag_configure('st_ok', background='#eefaf1')
         self.tree.tag_configure('st_skip', foreground=theme.C_SUB)
         self.tree.tag_configure('st_fail', background='#fdeceb')
+        self.tree.tag_configure('wait_time', foreground=theme.C_SUB)
         self.tree.bind('<<TreeviewSelect>>', self.on_pick_row)
-        Tip(self.root, self.tree)
+        # 状态列里「点我看看 / 点我补时间」可以直接点（见 _on_cell_click）
+        self.tree.bind('<Button-1>', self._on_cell_click, add='+')
+        # 悬停预览：图 + 「原名 → 新名」放同一个浮窗，避免两个提示窗打架
+        RowPreview(self.root, self.tree, self._hover_photo, self._hover_lines)
         # 空表时在中间放一句话，而不是留一片白让人不知道该干嘛
         self.lbl_empty = tk.Label(
             self.tree, text=T('选好文件夹，点「开始识别」，剩下的交给我'),
@@ -475,10 +474,10 @@ class App:
                 self._width_job = None
 
     def _apply_widths(self):
-        """把内容宽度写回列上：文件名优先吃饱，地名/描述按比例让出空间。
+        """把内容宽度写回列上：两个文件名优先吃饱，描述拿剩下的。
 
         顺序是刻意的——「原文件名 / 新文件名」是这软件的最终产物，截断了等于白干；
-        地名和描述可以截，鼠标停住还有提示。全让完还不够就出横向滚动条。
+        描述可以截，鼠标停住还有提示。全让完还不够就出横向滚动条。
         """
         self._width_job = None
         try:
@@ -494,22 +493,18 @@ class App:
             for c in ('old', 'new'):
                 lo, hi = b[c]
                 want[c] = max(lo, min(hi, need[c]))
+            # 2) 状态列：字都很短，够放下最长的那个就行
+            lo_s, hi_s = b['st']
+            want['st'] = max(lo_s, min(hi_s, need['st']))
 
-            # 2) 地名 / 描述：把剩下的宽度按「各还需要多少」按比例分，不低于下限
-            lo_p, hi_p = b['place']
+            # 3) 描述：吃掉剩下的全部宽度，不低于下限
             lo_d, hi_d = b['desc']
-            wp = max(lo_p, min(need['place'], hi_p))
             wd = max(lo_d, min(need['desc'], hi_d))
             if avail > 1:
-                fixed = want['old'] + want['new'] + cur['no'] + cur['sec'] + cur['st']
-                budget = max(avail - fixed, lo_p + lo_d)
-                if wp + wd > budget:
-                    extra = max(0, budget - (lo_p + lo_d))
-                    ep, ed = max(0, wp - lo_p), max(0, wd - lo_d)
-                    if ep + ed > extra and (ep + ed) > 0:
-                        k = extra / float(ep + ed)
-                        wp, wd = lo_p + int(ep * k), lo_d + int(ed * k)
-            want['place'], want['desc'] = wp, wd
+                fixed = want['old'] + want['new'] + want['st']
+                budget = max(avail - fixed, lo_d)
+                wd = min(wd, max(lo_d, budget))
+            want['desc'] = wd
 
             for c, w in want.items():
                 if w != cur[c]:
@@ -539,20 +534,21 @@ class App:
 
     # ------------------------------------------------------------ 选中详情条
     def _build_detail(self, parent):
-        """表格下方一条 68px 的横排详情：缩略图 + 原名→新名 + 地名/耗时。
+        """表格下方一条横排详情：原名 → 新名 + 地名/耗时/失败原因。
 
-        原右侧栏里的预览和「点行看详情」搬到这里。竖排要 270px 宽，横排只要
-        68px 高——省下的宽度全给结果表，7 列才放得下（实测 956px）。
+        缩略图不再常驻在这里——预览改成「鼠标在行上停半秒，旁边浮出来」
+        （见 widgets.RowPreview）。核对是偶发动作，不值得为它常驻占 90px 高度，
+        原来那块写着「无预览」的灰方块更是一块纯占位的死空白。
         """
         card = self._card(parent)
         card.pack(fill='x', pady=(8, 0))
         row = tk.Frame(card, bg=theme.C_CARD)
-        row.pack(fill='x', padx=10, pady=7)
-        self.lbl_prev = tk.Label(row, text=T('无预览'), bg='#eef1f5', fg=theme.C_HINT,
-                                 font=(theme.FONT, 8), width=16, height=3)
-        self.lbl_prev.pack(side='left')
+        row.pack(fill='x', padx=12, pady=8)
+        # 这个 label 不再上屏，只作为「当前缩略图」的引用持有者：
+        # _show_photo / _show_photo_file 一直往里写，沿用它们不用改。
+        self.lbl_prev = tk.Label(row, text='')
         box = tk.Frame(row, bg=theme.C_CARD)
-        box.pack(side='left', fill='x', expand=True, padx=(10, 0))
+        box.pack(side='left', fill='x', expand=True)
         self.lbl_d1 = tk.Label(box, text='', bg=theme.C_CARD, fg=theme.C_TEXT,
                                font=(theme.FONT, 10), anchor='w', justify='left')
         self.lbl_d1.pack(fill='x')
@@ -591,66 +587,76 @@ class App:
 
     # ------------------------------------------------------------ 运行日志（可折叠）
     def _build_log_drawer(self, parent):
-        """日志默认收起成一条窄条，出错时自动弹开（见 log()）。"""
-        self.var_log = tk.BooleanVar(value=self._sw('logopen', False))
-        card = self._card(parent)
-        card.pack(fill='x', pady=(10, 0))
-        self.log_head = tk.Frame(card, bg=theme.C_CARD, cursor='hand2')
-        self.log_head.pack(fill='x', padx=12, pady=(8, 6))
-        self.lbl_log = tk.Label(self.log_head, text='', bg=theme.C_CARD, fg=theme.C_SUB,
-                                font=(theme.FONT, 10, 'bold'), cursor='hand2')
-        self.lbl_log.pack(side='left')
-        self.log_tools = tk.Frame(self.log_head, bg=theme.C_CARD)
-        ttk.Button(self.log_tools, text=T('清空'), width=theme.button_width(6, 8),
-                   command=lambda: self.txt.delete('1.0', 'end')).pack(side='right')
-        ttk.Button(self.log_tools, text=T('复制全部'), width=theme.button_width(8, 10),
-                   command=self.copy_log).pack(side='right', padx=6)
-        for w in (self.log_head, self.lbl_log):
-            w.bind('<Button-1>', lambda e: self.toggle_log())
+        """运行日志不再上屏，只留一个隐藏的 Text 存着它。
 
-        self.log_body = tk.Frame(card, bg=theme.C_CARD)
-        wrap = tk.Frame(self.log_body, bg=theme.C_CARD)
-        wrap.pack(fill='both', expand=True, padx=12, pady=(0, 10))
-        self.txt = tk.Text(wrap, height=7, bg=theme.C_LOG_BG, fg=theme.C_LOG_FG,
-                           insertbackground=theme.C_LOG_FG, font=('Consolas', 9),
-                           relief='flat', wrap='none')
-        vs = ttk.Scrollbar(wrap, orient='vertical', command=self.txt.yview)
-        hs = ttk.Scrollbar(wrap, orient='horizontal', command=self.txt.xview)
-        self.txt.configure(yscrollcommand=vs.set, xscrollcommand=hs.set)
-        self.txt.grid(row=0, column=0, sticky='nsew')
-        vs.grid(row=0, column=1, sticky='ns')
-        hs.grid(row=1, column=0, sticky='ew')
-        wrap.rowconfigure(0, weight=1)
-        wrap.columnconfigure(0, weight=1)
+        主界面原来有一条「▸ 运行日志」窄条，点开是一屏技术日志——普通人不会看，
+        出问题时也读不懂。现在出错不弹日志，改弹一句人话 + 「复制日志发给作者」
+        （见 _error_summary）；日志本身照常完整记录，只是不出现在界面上。
+        """
+        self.var_log = tk.BooleanVar(value=False)
+        self.lbl_log = None
+        self.log_head = None
+        self.log_tools = None
+        self.log_body = None
+        self.txt = tk.Text(self.root, height=7, wrap='none')
         self.txt.tag_configure('err', foreground='#ff7b72')
         self.txt.tag_configure('ok', foreground='#7ee787')
         self.txt.tag_configure('dim', foreground='#8b949e')
         self.txt.tag_configure('head', foreground='#79c0ff')
-        self._log_apply(bool(self.var_log.get()))
 
     def _log_apply(self, opened: bool):
-        # 用自己的标记而不是 winfo_ismapped()：见 _show_stop 的说明
-        if getattr(self, '_log_shown', None) == opened and self.var_log.get() == opened:
-            return
-        self.var_log.set(opened)
-        self.lbl_log.configure(text=(T('▾ 运行日志') if opened else T('▸ 运行日志')))
+        """日志区已经没有可见部分了，这个接口留着给旧调用方（自检等）。"""
         try:
-            if opened:
-                self.log_tools.pack(side='right')
-                self.log_body.pack(fill='both', expand=True)
-            else:
-                self.log_tools.pack_forget()
-                self.log_body.pack_forget()
-            self._log_shown = opened
-        except Exception:
-            pass
-        try:
-            engine.save_config(logopen=bool(opened))
+            self.var_log.set(bool(opened))
         except Exception:
             pass
 
     def toggle_log(self):
         self._log_apply(not bool(self.var_log.get()))
+
+    def _error_summary(self, n_fail):
+        """跑完有失败时，弹一句人话，而不是把技术日志糊在界面上。
+
+        按钮只有两个：重试（识别一次）、复制日志发给作者（日志进剪贴板）。
+        日志内容普通人看不懂，但作者能看懂——所以把它做成「一键交给作者」。
+        """
+        if n_fail <= 0:
+            return
+        try:
+            w = tk.Toplevel(self.root)
+            w.title(APP_TITLE)
+            w.configure(bg=theme.C_BG)
+            w.transient(self.root)
+            w.resizable(False, False)
+            pad = tk.Frame(w, bg=theme.C_BG)
+            pad.pack(fill='both', expand=True, padx=22, pady=18)
+            tk.Label(pad, text=T('有 %d 张没认出来，已跳过') % n_fail,
+                     bg=theme.C_BG, fg=theme.C_TEXT,
+                     font=(theme.FONT, 11, 'bold')).pack(anchor='w')
+            tk.Label(pad, text=T('这些文件保持原名不动。可以先「重试」，'
+                                 '还不行就把日志复制给作者。'),
+                     bg=theme.C_BG, fg=theme.C_SUB, font=(theme.FONT, 9),
+                     wraplength=380, justify='left').pack(anchor='w', pady=(6, 0))
+            foot = tk.Frame(pad, bg=theme.C_BG)
+            foot.pack(fill='x', pady=(16, 0))
+
+            def copy_and_close():
+                self.copy_log()
+                self._toast(T('日志已复制，粘贴给作者就行'))
+                w.destroy()
+
+            ttk.Button(foot, text=T('复制日志发给作者'), style='Sec.TButton',
+                       command=copy_and_close).pack(side='right')
+            ttk.Button(foot, text=T('重试'), style='Go.TButton',
+                       command=lambda: (w.destroy(), self.on_go())).pack(
+                side='right', padx=(0, 8))
+            w.update_idletasks()
+            rw, rh = w.winfo_reqwidth(), w.winfo_reqheight()
+            x = self.root.winfo_rootx() + max(0, (self.root.winfo_width() - rw) // 2)
+            y = self.root.winfo_rooty() + max(0, (self.root.winfo_height() - rh) // 3)
+            w.geometry('+%d+%d' % (x, y))
+        except Exception:
+            pass
 
     @staticmethod
     def _sw(key, default):
@@ -806,12 +812,8 @@ class App:
         ts = time.strftime('%H:%M:%S')
         self.txt.insert('end', '[%s] %s\n' % (ts, s), tag or ())
         self.txt.see('end')
-        # 报错了就把日志抽屉弹开——收起状态下用户会看不到失败原因
-        if tag == 'err' and not self.var_log.get() and not getattr(self, '_no_autolog', False):
-            try:
-                self.root.after(60, lambda: self._log_apply(True))
-            except Exception:
-                pass
+        # 日志只留在后台。原来这里会把日志抽屉自动弹开，把技术报错糊到用户脸上；
+        # 现在出错统一走 _error_summary 的人话框。
         # 控制台也留一份，便于排障
         try:
             print(s, flush=True)
@@ -1073,8 +1075,12 @@ class App:
             pass
         return npic, nvid
 
-    def open_plan(self, auto=False):
-        """打开「核对并改名」窗口（时间/地点/描述都能手改）。"""
+    def open_plan(self, auto=False, focus_index=None):
+        """打开「核对并改名」窗口（时间/地点/描述都能手改）。
+
+        focus_index 给定时会翻到那一行并选中它——主界面点状态列的
+        「点我补时间 / 点我看看」就是走这条路，用户点哪行就看到哪行。
+        """
         d = os.path.abspath(self.var_dir.get().strip())
         if not os.path.isdir(d):
             messagebox.showerror(APP_TITLE, T('目录不存在：\n%s') % d)
@@ -1089,6 +1095,11 @@ class App:
         # 回滚入口从 ⋯更多 菜单挪进核对窗口：它只在「这个目录改过名」时才有意义，
         # 和这张表天然是一起的，也不用再放一个随时灰着的菜单项。
         dlg = PlanDialog(self.root, d, items, on_rollback=self.on_rollback)
+        if focus_index is not None:
+            try:
+                dlg.after(120, lambda: dlg.focus_row(focus_index))
+            except Exception:
+                pass
         self.root.wait_window(dlg)      # 注意：PlanDialog 本身就是 Toplevel，没有 .top
         if dlg.applied:
             done, failed, skipped = dlg.applied
@@ -1112,6 +1123,7 @@ class App:
         """按计划表刷新结果列表。"""
         self.tree.delete(*self.tree.get_children())
         self._sync_empty()
+        self._iid_idx.clear()
         self._rows.clear()
         for i, it in enumerate(engine.load_plan(d), 1):
             st, stag = self._status_of(it)
@@ -1120,13 +1132,12 @@ class App:
                 tags.append(stag)
             self._rows[it.get('index', i)] = it
             self._note_width(('old', it.get('old')), ('new', it.get('new')),
-                             ('place', it.get('place')), ('desc', it.get('desc')))
-            self.tree.insert('', 'end', tags=tuple(tags), values=(
-                it.get('index', i), it.get('old', ''),
+                             ('desc', it.get('desc')), ('st', st))
+            iid = self.tree.insert('', 'end', tags=tuple(tags), values=(
+                it.get('old', ''),
                 it.get('new', '') or T('（时间空白）'),
-                it.get('place', '') or '—',
-                it.get('desc', '') or '—',
-                '%.1fs' % (it.get('secs') or 0), st))
+                it.get('desc', '') or '—', st))
+            self._iid_idx[iid] = it.get('index', i)
         self._apply_widths()
 
     def open_dir(self):
@@ -1396,6 +1407,7 @@ class App:
         self.stop_evt.clear()
         self.running = True
         self._rows.clear()
+        self._iid_idx.clear()
         self._thumbs.clear()
         self._photo_thumbs.clear()   # 文件马上要改名了，旧缩略图全部作废
         self._set_run_state('running')
@@ -1554,47 +1566,80 @@ class App:
 
     @staticmethod
     def _status_of(it):
-        """一行现在处于什么状态（配合 tag 上色）。"""
+        """一行现在处于什么状态（配合 tag 上色）。
+
+        两种失败长得一样、行为也一样：文案统一成「{失败类型}，点我看看」，
+        点了都打开核对框并定位到这一行看原因。用户不用记两套规则。
+        """
         if not it.get('ok', True):
-            return T('识别失败'), 'fail'
+            return T('没认出来，点我看看'), 'fail'
         if it.get('applied'):
-            return T('已改名'), 'st_ok'
+            return T('✓ 已改名'), 'st_ok'
         if it.get('err'):
-            return T('改名失败'), 'st_fail'
+            return T('改名失败，点我看看'), 'st_fail'
         if not str(it.get('time') or '').strip():
-            return T('待补时间'), 'st_skip'
+            return T('点我补时间'), 'wait_time'
         if it.get('new') and it['new'] != it.get('old'):
-            return T('待改名'), ''
-        return T('无需改名'), 'st_skip'
+            return T('✓'), ''
+        return T('—'), 'st_skip'
+
+    # 状态列里这几类可以点：点了就去核对框改/看这一行
+    _CLICK_ST = ('fail', 'st_fail', 'wait_time')
+
+    def _on_cell_click(self, ev):
+        """点状态列的「点我看看 / 点我补时间」→ 打开核对框并定位到这一行。
+
+        只认状态那一列：点文件名、描述还是照常选中整行看详情。
+        单行重跑要动识别循环（计划里明确不碰引擎），所以这里做的是
+        「把人送到能改的地方」。
+        """
+        try:
+            if self.tree.identify_column(ev.x) != '#%d' % len(self._cols):
+                return
+            iid = self.tree.identify_row(ev.y)
+            idx = self._iid_idx.get(iid)
+            if idx is None:
+                return
+            r = self._rows.get(idx)
+            if not r:
+                return
+            _st, stag = self._status_of(r)
+            if stag not in self._CLICK_ST:
+                return
+            self.open_plan(focus_index=idx)
+            return 'break'
+        except Exception:
+            return
 
     def add_item(self, r):
         idx = r.get('index', 0)
-        # 七列要和表头一一对应：# 原文件名 新文件名 地名 描述 耗时 状态
-        # （v3.3 拆列时这里少塞了一个值，导致「描述」列显示成耗时）
-        # 存完整值（列宽固定，超出的部分由表格自己裁掉），鼠标停住能看到全名
-        if not r.get('ok'):
-            self.tree.insert('', 'end', tags=('fail',),
-                             values=(idx, r.get('old', ''), T('（失败）'),
-                                     r.get('err', ''), '—', '—', T('识别失败')))
+        # 四列要和表头一一对应：原文件名 / 新文件名 / 描述 / 状态
+        # 存完整值（超出的部分由表格自己裁掉），鼠标停住能看到全名
+        if not r.get('ok', True):
+            st, _stag = self._status_of(r)
+            iid = self.tree.insert('', 'end', tags=('fail',),
+                                   values=(r.get('old', ''), T('（失败）'),
+                                           r.get('err', '') or '—', st))
+            self._iid_idx[iid] = idx
             # 失败行也存进 _rows：点它时详情条要能写出失败原因，否则只剩一句
             # 「上次识别留下的，没有更多细节」，把真正的原因藏起来了
             self._rows[idx] = r
-            self._note_width(('old', r.get('old')), ('place', r.get('err')))
+            self._note_width(('old', r.get('old')), ('desc', r.get('err')),
+                             ('st', st))
             self._sync_empty()
             return
         st, stag = self._status_of(r)
         tags = ['odd'] if idx % 2 else []
         if stag:
             tags.append(stag)
-        self.tree.insert('', 'end', tags=tuple(tags),
-                         values=(idx, r.get('old', ''),
-                                 r.get('new', '') or T('（时间空白）'),
-                                 r.get('place', '') or '—',
-                                 r.get('desc', '') or '—',
-                                 '%.1fs' % (r.get('t_model') or 0), st))
+        iid = self.tree.insert('', 'end', tags=tuple(tags),
+                               values=(r.get('old', ''),
+                                       r.get('new', '') or T('（时间空白）'),
+                                       r.get('desc', '') or '—', st))
+        self._iid_idx[iid] = idx
         self._rows[idx] = r
         self._note_width(('old', r.get('old')), ('new', r.get('new')),
-                         ('place', r.get('place')), ('desc', r.get('desc')))
+                         ('desc', r.get('desc')), ('st', st))
         if r.get('thumb'):
             self._thumbs[idx] = r['thumb']
         self.tree.yview_moveto(1.0)
@@ -1668,6 +1713,74 @@ class App:
         except Exception:
             return False
 
+    def _hover_photo(self, iid):
+        """悬停预览要的图：视频取识别时抽的帧，照片直接读原图缩到 300px 宽。"""
+        idx = self._iid_idx.get(iid)
+        if idx is None:
+            return None
+        try:
+            ph = self._photo_thumbs.get(idx)
+            if ph is not None:
+                return ph
+        except Exception:
+            pass
+        data = self._thumbs.get(idx)
+        im = None
+        if _HAS_PIL and data:
+            try:
+                im = Image.open(io.BytesIO(data))
+            except Exception:
+                im = None
+        if im is None:
+            r = self._rows.get(idx) or {}
+            if _HAS_PIL and r.get('kind') == 'photo':
+                d = os.path.abspath(self.var_dir.get().strip())
+                for name in (r.get('new'), r.get('old')):
+                    p = os.path.join(d, name) if name else ''
+                    if p and os.path.isfile(p):
+                        try:
+                            im = Image.open(p)
+                        except Exception:
+                            im = None
+                        break
+        if im is None:
+            return None
+        try:
+            w, h = im.size
+            k = 300.0 / max(1, w)
+            if h * k > 340:
+                k = 340.0 / max(1, h)
+            nim = im.convert('RGB').resize((max(1, int(w * k)), max(1, int(h * k))))
+            photo = ImageTk.PhotoImage(nim)
+            self._hover_ref = photo      # 保住引用，否则浮窗里是空白
+            return photo
+        except Exception:
+            return None
+
+    def _hover_lines(self, iid):
+        """悬停预览要的字：原名 → 新名 + 地名/描述（列宽有限，长名字靠这里看全）。"""
+        idx = self._iid_idx.get(iid)
+        r = self._rows.get(idx) if idx is not None else None
+        if not r:
+            try:
+                v = self.tree.item(iid, 'values')
+            except Exception:
+                return []
+            return ([T('原文件：%s') % v[0], T('新文件：%s') % v[1]]
+                    if len(v) > 1 else [])
+        lines = [T('原文件：%s') % r.get('old', ''),
+                 T('新文件：%s') % (r.get('new') or T('（时间空白，不改名）'))]
+        bits = []
+        if r.get('place'):
+            bits.append(r['place'])
+        if r.get('desc'):
+            bits.append(r['desc'])
+        if bits:
+            lines.append('　·　'.join(bits))
+        if r.get('err'):
+            lines.append(T('失败：%s') % r['err'])
+        return lines
+
     def show_thumb(self, r):
         self._show_photo(r.get('thumb'))
         self._set_detail(r)
@@ -1677,19 +1790,13 @@ class App:
         sel = self.tree.selection()
         if not sel:
             return
-        vals = self.tree.item(sel[0], 'values')
-        if not vals:
-            return
-        try:
-            idx = int(str(vals[0]).strip())
-        except (ValueError, TypeError):
+        # 表格只有四列，第一列已经是原文件名，不能再从 values 里取序号
+        idx = self._iid_idx.get(sel[0])
+        if idx is None:
             return
         r = self._rows.get(idx)
         if not r:
-            self.lbl_prev.configure(image='', text=T('无预览'), width=16, height=3)
-            self._thumb_ref = None
-            self._set_detail(None, fallback=T('%s　→　%s（上次识别留下的，没有更多细节）')
-                             % (vals[1], vals[2]))
+            self._set_detail(None, fallback=T('这一行没有更多细节（可能是上次识别留下的）'))
             return
         if not self._show_photo(self._thumbs.get(idx)):
             if not self._show_photo_file(r, idx):
@@ -1724,6 +1831,8 @@ class App:
                 tip += T('，%d 张没认出来') % fail
             self._toast(tip, T('查看详细报告'), self.open_report)
             self.log(T('——— 识别结束 ———'), 'head')
+            if fail:
+                self.root.after(400, lambda: self._error_summary(fail))
         self._refresh_plan_btn()
         if not n:
             self.log(T('没有可改名的项目'), 'dim')
@@ -1859,12 +1968,20 @@ class App:
         self._set_detail(self._rows.get(1) if self._rows else None)
         self.root.update_idletasks()
         self.log(T('自检：选中详情条首行 = %r') % self.lbl_d1.cget('text')[:28], 'ok')
-        for op in (True, False, True):
-            self._log_apply(op)
-            self.root.update_idletasks()
-        self._log_apply(False)
-        self.root.update_idletasks()
-        self.log(T('自检：运行日志抽屉展开/收起正常'), 'ok')
+        # 日志已经从界面撤下来了，只剩后台记录 + 出错时的人话框
+        self.log(T('自检：运行日志已不上屏（后台仍完整记录，出错走人话框）'), 'ok')
+        # 结果表四列：原文件名 / 新文件名 / 描述 / 状态
+        self.log(T('自检：结果表列 = %s') % ' / '.join(self._cols),
+                 'ok' if list(self._cols) == ['old', 'new', 'desc', 'st'] else 'err')
+        # 状态列：两种失败文案一致、都可点；待补时间也点得动
+        _s1 = self._status_of({'ok': False})[0]
+        _s2 = self._status_of({'ok': True, 'err': 'x', 'time': '1'})[0]
+        _s3 = self._status_of({'ok': True, 'time': ''})[0]
+        self.log(T('自检：状态列文案 %s / %s / %s') % (_s1, _s2, _s3),
+                 'ok' if (_s1.endswith('点我看看') and _s2.endswith('点我看看')
+                          and _s3 == T('点我补时间')) else 'err')
+        # 空表时那句引导真的存在
+        self.log(T('自检：空表引导 = %r') % self.lbl_empty.cget('text')[:24], 'ok')
         # 「停止识别」平时藏起来，跑起来才出现——这是本次布局的核心改动
         _seen = []
         for s in ('idle', 'running', 'stopping', 'stopped', 'done'):

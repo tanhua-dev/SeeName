@@ -46,13 +46,14 @@ class Tip:
             if not iid or not self.tree.exists(iid):
                 return
             v = self.tree.item(iid, 'values')
-            if len(v) < 3:
+            if len(v) < 2:
                 return
-            lines = [T('原文件：%s') % v[1], T('新文件：%s') % v[2]]
-            if len(v) > 4 and v[3] not in ('', '—'):
-                lines.append(T('地名：%s\u3000描述：%s') % (v[3], v[4]))
-            if len(v) > 6 and v[6]:
-                lines.append(T('状态：%s') % v[6])
+            # 四列：原文件名 / 新文件名 / 描述 / 状态
+            lines = [T('原文件：%s') % v[0], T('新文件：%s') % v[1]]
+            if len(v) > 2 and v[2] not in ('', '—'):
+                lines.append(T('描述：%s') % v[2])
+            if len(v) > 3 and v[3]:
+                lines.append(T('状态：%s') % v[3])
             w = tk.Toplevel(self.master)
             w.wm_overrideredirect(True)
             w.wm_geometry('+%d+%d' % (x + 14, y + 18))
@@ -118,6 +119,88 @@ class Hover:
             x = min(px + 14, max(0, self.w.winfo_screenwidth() - w.winfo_width() - 8))
             y = min(py + 18, max(0, self.w.winfo_screenheight() - w.winfo_height() - 8))
             w.wm_geometry('+%d+%d' % (x, y))
+        except Exception:
+            pass
+
+
+class RowPreview:
+    """鼠标在结果行上停一会儿，旁边浮出这一行的预览。
+
+    核对是偶发动作，不值得为它在主界面常驻一块 90px 高的预览区；但真要看
+    的时候又不能没有。所以做成悬停浮窗：图 + 「原名 → 新名」，移开就消失。
+    文字和图片放进同一个浮窗，避免两个提示窗同时冒出来打架。
+    """
+
+    def __init__(self, master, tree, get_photo, get_lines, delay=500):
+        self.master = master
+        self.tree = tree
+        self.get_photo = get_photo
+        self.get_lines = get_lines
+        self.delay = delay
+        self.job = None
+        self.win = None
+
+        tree.bind('<Motion>', self._move)
+        tree.bind('<Leave>', lambda e: self.hide())
+        tree.bind('<ButtonPress>', lambda e: self.hide())
+
+    def hide(self):
+        if self.job:
+            try:
+                self.tree.after_cancel(self.job)
+            except Exception:
+                pass
+            self.job = None
+        if self.win is not None:
+            try:
+                self.win.destroy()
+            except Exception:
+                pass
+            self.win = None
+
+    def _move(self, ev):
+        self.hide()
+        iid = self.tree.identify_row(ev.y)
+        if not iid:
+            return
+        self.job = self.tree.after(
+            self.delay, lambda: self._show(ev.x_root, ev.y_root, iid))
+
+    def _show(self, x, y, iid):
+        try:
+            if not iid or not self.tree.exists(iid):
+                return
+            photo = None
+            try:
+                photo = self.get_photo(iid)
+            except Exception:
+                photo = None
+            lines = []
+            try:
+                lines = self.get_lines(iid) or []
+            except Exception:
+                lines = []
+            if photo is None and not lines:
+                return
+            win = tk.Toplevel(self.master)
+            win.wm_overrideredirect(True)
+            box = tk.Frame(win, bg='#fffbe6', highlightthickness=1,
+                           highlightbackground=theme.C_LINE_D)
+            box.pack()
+            if photo is not None:
+                lb = tk.Label(box, image=photo, bg='#fffbe6')
+                lb.image = photo      # 保住引用，否则图会被回收成空白
+                lb.pack(padx=4, pady=(4, 0))
+            if lines:
+                tk.Label(box, text='\n'.join(lines), justify='left',
+                         bg='#fffbe6', fg=theme.C_TEXT, font=(theme.FONT, 9),
+                         wraplength=460).pack(padx=8, pady=6, anchor='w')
+            win.update_idletasks()
+            # 越界就翻到鼠标左边/上面，别被屏幕边裁掉
+            px = min(x + 16, max(0, self.tree.winfo_screenwidth() - win.winfo_width() - 8))
+            py = min(y + 18, max(0, self.tree.winfo_screenheight() - win.winfo_height() - 8))
+            win.wm_geometry('+%d+%d' % (px, py))
+            self.win = win
         except Exception:
             pass
 
