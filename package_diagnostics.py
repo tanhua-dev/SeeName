@@ -160,7 +160,11 @@ def run_package_check(result_path: str, model_directory: str = '', vulkan_direct
                 root.report_callback_exception = lambda kind, error, tb: callback_errors.append(str(error))
                 app = App(root)
                 root.update_idletasks()
-                if app.var_meta.get() or 'disabled' not in app.cb_meta.state() or callback_errors:
+                # v2 起「写入文件元数据」搬进设置窗、换成了 SwitchRow，
+                # 主界面上不再有 cb_meta 这个 Checkbutton，App 一建就能查的
+                # 只剩变量本身。控件是否置灰由 settings 里的 SwitchRow 按
+                # metadata_writing_enabled() 自己决定，这里不越界去碰它。
+                if app.var_meta.get() or metadata_writing_enabled() or callback_errors:
                     raise AssertionError('Frozen GUI did not enforce the build capability')
                 report['gui'] = True
                 root.destroy()
