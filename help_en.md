@@ -40,7 +40,7 @@ Top to bottom:
 - **Selected-row strip**: click a row and it shows the thumbnail, `original → new`, plus place · elapsed time · frames. When a name is clipped in the table, this is where you read it in full.
 - **Bottom status bar**: one sentence on the left — `● Ready`, `● Analyzing 3/128`, `● Stopped · 3/128`. Click it to see the model state; if the model is not ready yet it jumps to the Model group in Setup. The version number sits on the right.
 - **The run log is no longer on screen**: when you need it, the error dialog has `Copy log for the author`. When a run finishes a small toast summarises it (how many items, how many to rename); click `View full report` on it for the full report.
-- **⚙ Settings** (top right): two parts — `Common` holds just three groups (scope, model, save mode); everything technical is folded under `▸ Advanced settings`, collapsed by default. Changes save instantly, no OK button.
+- **⚙ Settings** (top right): two parts — `Common` holds just three groups (scope, model, save mode); everything technical is folded under `▸ Advanced settings`, collapsed by default (it turns into `▾ Advanced settings` once opened). Changes save instantly, no OK button.
 
 ## 4. Every setting, explained
 
@@ -51,7 +51,7 @@ Top to bottom:
 - **Acceleration**: by default it only reports the verdict — "GPU detected — using Vulkan acceleration", or "No usable GPU acceleration — running on CPU (slower)". To pin it yourself, click `Change` on the right and pick `Auto` / `CUDA` / `Vulkan` / `CPU only`.
 - **Save mode**: `Simple` (rename only, no extra files — **default**) or `Detailed` (also keeps the `.ai.txt` summary and `目录说明.md`, and writes file metadata). This is the master switch for the three detail options under Advanced.
 
-**Advanced (only after clicking `▸ Advanced settings`)**
+**Advanced (only after clicking `▸ Advanced settings`, which then becomes `▾ Advanced settings`)**
 
 - **Analysis**
   - **Frames**: how many images per video go to the model. `Auto` picks by clip length (2 for short clips, 8 for long ones) — usually leave it. Raise it (4/6/8) if results look off; lower it for simple footage to go faster.
