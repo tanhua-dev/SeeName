@@ -19,7 +19,7 @@ from strings import T
 from core.features import metadata_writing_enabled
 from . import theme
 from .common import APP_AUTHOR, APP_SUB, APP_TITLE, APP_VER, asset_path, cut, fmt_dur, open_path
-from .widgets import Hover, Tip
+from .widgets import Hover, Tip, Toast, DisabledTip
 from .controls import CheckRow
 from .dialogs.information import AboutDialog, HelpDialog, help_path
 from .dialogs.models import ModelDialog
@@ -280,73 +280,69 @@ class App:
                    width=theme.button_width(9, 12)).pack(side='right', padx=(0, 8), pady=(4, 0))
 
     def _build_control(self, parent):
-        """三步走完：① 选文件夹 ② 开始识别 ③ 核对并改名。
+        """两行走完：① 一个大按钮选文件夹 ② 开始识别 → 核对并改名。
 
-        原来是四行控件，而第三步「核对并改名」藏在「⋯更多」菜单里——可它恰恰
-        是识别完必点的动作，藏菜单里等于让用户去猜。现在三步竖排在界面上，
-        顺序本身就是引导；处理范围的勾选搬进设置窗口（常用第一组），这一屏只留三步。
+        原来这里是「文件夹」标签 + 输入框 + 「浏览…」+ 预设下拉，一行挤了四个
+        控件。普通人第一眼的困惑正是「我该点哪个」。现在整块就是一个按钮：
+        点它选目录，选完按钮上直接写「{文件夹名} · 128 张」。
+        进度条平时不存在——跑起来时「开始识别」这个按钮原地变成进度条，
+        不再额外占一行，也不会留一个空槽在那里。
         """
         card = self._card(parent)
         card.pack(fill='x')
         inner = tk.Frame(card, bg=theme.C_CARD)
         inner.pack(fill='x', padx=12, pady=10)
 
-        # —— 第 1 步：文件夹（右边「浏览… / 预设」先占位，窄窗口也不会被挤出去）
-        r1 = tk.Frame(inner, bg=theme.C_CARD)
-        r1.pack(fill='x')
-        tk.Label(r1, text=T('文件夹'), bg=theme.C_CARD, fg=theme.C_TEXT,
-                 font=(theme.FONT, 10)).pack(side='left', padx=(0, 9))
+        # —— 第 1 步：一个按钮
+        # 预设改成标题栏下面的「模式」单选（见 _build_mode），这里不再放下拉。
         self._preset_disp = {T(k): k for k in engine.PRESETS}
         self.var_preset = tk.StringVar(value='')
-        # 没有预设时不建这个下拉，免得显示一个空框
-        if engine.PRESETS:
-            self.cmb_preset = ttk.Combobox(r1, textvariable=self.var_preset, width=12,
-                                           state='readonly',
-                                           values=list(self._preset_disp))
-            self.cmb_preset.pack(side='right')
-            self.cmb_preset.bind('<<ComboboxSelected>>', self._on_preset_pick)
-        else:
-            self.cmb_preset = None
-        ttk.Button(r1, text=T('浏览…'), command=self.pick_dir).pack(side='right', padx=(0, 8))
+        self.cmb_preset = None
         self.var_dir = tk.StringVar(
             value=(list(engine.PRESETS.values())[0] if engine.PRESETS else ''))
         # 换了目录，上一次的运行状态就不算数了，回到「未开始」
         self.var_dir.trace_add('write', lambda *a: self._on_dir_change())
-        self.ent_dir = ttk.Entry(r1, textvariable=self.var_dir, font=(theme.FONT, 10))
-        self.ent_dir.pack(side='left', fill='x', expand=True)
+        self.btn_dir = ttk.Button(inner, text=T('📁 选择照片文件夹'),
+                                  style='Dir.TButton', command=self.pick_dir)
+        self.btn_dir.pack(fill='x')
+        self.ent_dir = self.btn_dir      # 兼容：_busy_widgets 靠它置灰
+        # 这一步会处理什么 / 文件夹空不空，就写在按钮下面一行小字
+        self.lbl_scope = tk.Label(inner, text='', bg=theme.C_CARD, fg=theme.C_SUB,
+                                  font=(theme.FONT, 9), anchor='w', justify='left')
+        self.lbl_scope.pack(fill='x', pady=(7, 0))
 
-        # —— 第 2 步：开始识别（进度条与状态灯并到同一行，省下整整一行高度）
+        # —— 第 2 步：开始识别（原地变进度条）+ 核对并改名接棒
         r2 = tk.Frame(inner, bg=theme.C_CARD)
         r2.pack(fill='x', pady=(11, 0))
-        self.btn_go = ttk.Button(r2, text=T('▶ 开始识别'), style='Go.TButton',
-                                 command=self.on_go)
-        self.btn_go.pack(side='left')
-        self.btn_stop = ttk.Button(r2, text=T('停止识别'), style='Sec.TButton',
-                                   width=theme.button_width(10, 9), command=self.on_stop,
-                                   state='disabled')
-        # 状态灯：说清现在是「没开始 / 正在跑 / 已停 / 跑完了」，
-        # 光看按钮的禁用状态分不出来（v3.4 反馈）
-        self.lbl_state = tk.Label(r2, text=T('● 未开始'), bg=theme.C_CARD, fg=theme.C_SUB,
-                                  font=(theme.FONT, 10, 'bold'))
-        self.lbl_state.pack(side='right')
-        self.pb = ttk.Progressbar(r2, mode='determinate', maximum=100)
-        self.pb.pack(side='left', fill='x', expand=True, padx=(12, 12))
-        self.lbl_prog = tk.Label(r2, text=T('待处理'), bg=theme.C_CARD, fg=theme.C_SUB,
-                                 font=(theme.FONT, 9))
-        self.lbl_prog.pack(side='left', padx=(0, 12))
+        self.go_slot = tk.Frame(r2, bg=theme.C_CARD, height=42, width=206)
+        self.go_slot.pack(side='left')
+        self.go_slot.pack_propagate(False)
+        self.btn_go = ttk.Button(self.go_slot, text=T('▶ 开始识别'),
+                                 style='Go.TButton', command=self.on_go)
+        self.btn_go.pack(fill='both', expand=True)
+        # 顶替按钮的那块：进度条 + 一行字。与按钮同位置同高度（容器定高
+        # pack_propagate(False)），所以切换时版面不跳。平时不 pack。
+        self.go_bar = tk.Frame(self.go_slot, bg=theme.C_CARD)
+        self.pb = ttk.Progressbar(self.go_bar, mode='determinate', maximum=100)
+        self.pb.pack(fill='x', pady=(9, 0))
+        self.lbl_prog = tk.Label(self.go_bar, text='', bg=theme.C_CARD,
+                                 fg=theme.C_ACCENT, font=(theme.FONT, 9, 'bold'),
+                                 anchor='w')
+        self.lbl_prog.pack(fill='x', pady=(3, 0))
 
-        # —— 第 3 步：核对并改名。识别完自动可点（见 _refresh_plan_btn），
-        #    目录里有上次的计划表时也可点，不用先跑一遍。
-        r3 = tk.Frame(inner, bg=theme.C_CARD)
-        r3.pack(fill='x', pady=(11, 0))
-        self.btn_plan = ttk.Button(r3, text=T('核对并改名…'), style='Sec.TButton',
+        self.btn_plan = ttk.Button(r2, text=T('核对并改名…'), style='Sec.TButton',
                                    command=self.open_plan, state='disabled',
                                    width=theme.button_width(11, 13))
-        self.btn_plan.pack(side='left')
-        # 「这次会处理什么」的说明靠右：一眼看到范围，不用再去翻设置
-        self.lbl_scope = tk.Label(r3, text='', bg=theme.C_CARD, fg=theme.C_SUB,
-                                  font=(theme.FONT, 9), anchor='e', justify='right')
-        self.lbl_scope.pack(side='right', fill='x', expand=True, padx=(12, 0))
+        self.btn_plan.pack(side='left', padx=(10, 0))
+        # 灰着的时候停在上面会说明为什么点不了，不是干等着用户自己猜
+        DisabledTip(self.btn_plan, lambda: T('识别完成后点亮'))
+        self.btn_stop = ttk.Button(r2, text=T('停止识别'), style='Sec.TButton',
+                                   width=theme.button_width(10, 9),
+                                   command=self.on_stop, state='disabled')
+        # 平均/剩余靠右：只在跑的时候有内容
+        self.lbl_avg = tk.Label(r2, text='', bg=theme.C_CARD, fg=theme.C_SUB,
+                                font=(theme.FONT, 9), anchor='e', justify='right')
+        self.lbl_avg.pack(side='right')
 
     # ------------------------------------------------------------ 结果表
     def _build_table(self, parent):
@@ -415,6 +411,21 @@ class App:
         self.tree.tag_configure('st_fail', background='#fdeceb')
         self.tree.bind('<<TreeviewSelect>>', self.on_pick_row)
         Tip(self.root, self.tree)
+        # 空表时在中间放一句话，而不是留一片白让人不知道该干嘛
+        self.lbl_empty = tk.Label(
+            self.tree, text=T('选好文件夹，点「开始识别」，剩下的交给我'),
+            bg=theme.C_CARD, fg=theme.C_HINT, font=(theme.FONT, 10))
+        self._sync_empty()
+
+    def _sync_empty(self):
+        """空表才显示那句话；一旦有行就收起来。"""
+        try:
+            if self.tree.get_children():
+                self.lbl_empty.place_forget()
+            else:
+                self.lbl_empty.place(relx=0.5, rely=0.5, anchor='center')
+        except Exception:
+            pass
 
     @staticmethod
     def _fit_columns(heads, samples, bounds):
@@ -706,56 +717,89 @@ class App:
 
     # ------------------------------------------------------------ 底部状态栏
     def _build_statusbar(self):
+        """底部只留一句话：现在是什么状态。
+
+        原来这一条塞了模型圆点、端口、`llama.cpp · CPU`、模型库路径、地名版权、
+        版本号——像调试面板。普通人只想知道「现在能不能点」。现在整条只有一句
+        `● 就绪` / `● 正在识别 12/128`，技术细节全部收进这行字的悬浮提示。
+        模型没加载时这句话变成 `● 模型待加载` 并且可以点——直接跳到设置的
+        模型组。原来点它没反应，用户不知道去哪配，按了开始也没动静。
+        """
         bar = tk.Frame(self.root, bg=theme.C_BAR)
         bar.pack(side='bottom', fill='x')
 
-        # ● 模型状态：点击可提前加载选中的本地模型。
-        self.dot_srv = tk.Label(bar, text=T('● 模型未启动'), bg=theme.C_BAR, fg=theme.C_HINT,
-                                font=(theme.FONT, 9), cursor='hand2')
-        self.dot_srv.pack(side='left', padx=(14, 0), pady=5)
-        self.dot_srv.bind('<Button-1>', lambda e: self.on_start_srv())
-        self._srv_hint = T('点这里加载所选模型')
-        Hover(self.dot_srv, lambda: self._srv_hint)
+        # 这一句就是整个状态栏。`lbl_state` 这个名字保留：_set_run_state 与
+        # update_prog 都在改它，改名会牵一片。
+        self.lbl_state = tk.Label(bar, text=T('● 就绪'), bg=theme.C_BAR,
+                                  fg=theme.C_SUB, font=(theme.FONT, 9, 'bold'),
+                                  cursor='hand2')
+        self.lbl_state.pack(side='left', padx=(14, 0), pady=5)
+        self.lbl_state.bind('<Button-1>', lambda e: self._on_state_click())
+        Hover(self.lbl_state, lambda: self._state_hint_text())
 
-        ttk.Separator(bar, orient='vertical',
-                      style='Bar.TSeparator').pack(side='left', fill='y',
-                                                   padx=10, pady=4)
-        self.lbl_port = tk.Label(bar, text='', bg=theme.C_BAR, fg=theme.C_SUB, font=(theme.FONT, 9))
-        self.lbl_port.pack(side='left', pady=5)
+        # 下面三个控件不再上屏，只留作数据容器：update_server 照旧往里写
+        # backend·device 和模型库路径，悬浮提示再读出来给想知道的人看。
+        self.dot_srv = tk.Label(bar, text=T('● 模型未启动'))
+        self._srv_hint = ''
+        self.lbl_port = tk.Label(bar, text='')
         self._port_hint = ''
-        Hover(self.lbl_port, lambda: self._port_hint)
-
-        ttk.Separator(bar, orient='vertical',
-                      style='Bar.TSeparator').pack(side='left', fill='y',
-                                                   padx=10, pady=4)
-        self.lbl_models = tk.Label(bar, text='', bg=theme.C_BAR, fg=theme.C_SUB,
-                                   font=(theme.FONT, 9))
-        self.lbl_models.pack(side='left', pady=5)
+        self.lbl_models = tk.Label(bar, text='')
         self._models_full = ''
-        Hover(self.lbl_models, lambda: self._models_full)
-        # 设备和目录无需等待后台初始化。
+        self._model_badge = (T('● 模型待加载'), theme.C_HINT)
+        self._model_ready = False
         try:
-            self.lbl_port.configure(text='llama.cpp · CPU')
             md = engine.models_dir()
             self.lbl_models.configure(text=T('模型库 %s') % cut(md, 34))
             self._models_full = md
         except Exception:
             pass
 
-        # 右端只留版本号。原来这里是「⋯ 更多」菜单（11 项），其中 3 个「打开…」
-        # 与侧栏按钮重复、模型管理设置里有、日志点标题就能展开，而真正独有的
-        # 「核对并改名」已经升为界面第 3 步，其余（回滚）挪进核对窗口——整块拆掉。
+        # 版本号靠右，小字
         tk.Label(bar, text=(APP_VER if APP_VER.startswith('v') else 'v' + APP_VER),
                  bg=theme.C_BAR, fg=theme.C_HINT,
                  font=(theme.FONT, 8)).pack(side='right', padx=(0, 14), pady=5)
-        # 地名数据署名：原来是状态栏上面单独一行的浅灰小字，白占一行高度。
-        # 现在缩到版本号左边同一行，全文放悬浮提示里。
-        self.lbl_credit = tk.Label(
-            bar, text=T('地名数据 © OpenStreetMap · GeoNames'),
-            bg=theme.C_BAR, fg=theme.C_HINT, font=(theme.FONT, 8))
-        self.lbl_credit.pack(side='right', padx=(0, 10), pady=5)
-        Hover(self.lbl_credit, lambda: T(
-            '地名数据 © OpenStreetMap 贡献者（ODbL）· 全球城市 GeoNames（CC-BY 4.0）'))
+
+    def _state_hint_text(self):
+        """状态那一句的悬浮说明：把技术细节放这里，不摆在明面上。"""
+        bits = [getattr(self, '_srv_hint', '') or '']
+        try:
+            port = self.lbl_port.cget('text')
+            if port:
+                bits.append(port)
+        except Exception:
+            pass
+        if getattr(self, '_port_hint', ''):
+            bits.append(self._port_hint)
+        if getattr(self, '_models_full', ''):
+            bits.append(T('模型库 %s') % self._models_full)
+        return '\n'.join([b for b in bits if b])
+
+    def _on_state_click(self):
+        """点状态那句话：模型没好就直接去配，别让人对着灰按钮猜。"""
+        if getattr(self, '_model_ready', False):
+            self._toast(self._state_hint_text() or T('● 就绪'))
+            return
+        try:
+            self.open_settings(section='model')
+        except Exception:
+            self.open_settings()
+
+    def _sync_idle_state(self, **kw):
+        """空闲时状态栏那句跟着模型状态走：就绪 / 模型待加载 / 识别完成。
+
+        跑起来之后由 _set_run_state 和 update_prog 接管，这里不插手。
+        """
+        if getattr(self, 'state', 'idle') != 'idle':
+            return
+        try:
+            if getattr(self, '_model_ready', False):
+                self.lbl_state.configure(text=T('● 就绪'), fg=theme.C_SUB)
+            else:
+                text, fg = getattr(self, '_model_badge',
+                                   (T('● 模型待加载'), theme.C_HINT))
+                self.lbl_state.configure(text=text, fg=fg)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 日志
     def log(self, s, tag=None):
@@ -818,41 +862,75 @@ class App:
 
     # ------------------------------------------------------------ 运行状态
     def _set_run_state(self, s, **kw):
-        """把「现在到底在干嘛」写清楚：按钮文字 + 状态灯 + 停止按钮的显隐。
+        """把「现在到底在干嘛」写清楚：按钮 vs 进度条 + 状态栏一句话。
 
-        「停止识别」平时不占位（主界面只有一个主要动作），只有真在跑的时候才
-        pack 出来；停掉或跑完自动收回。
+        进度条不再常驻：跑起来的时候「开始识别」这个按钮原地换成进度条，
+        跑完换回来。所以平时界面上看不到任何空的进度槽。
+        「停止识别」平时也不占位，只有真在跑的时候才出现。
         """
         self.state = s
         go, stop = self.btn_go, self.btn_stop
         if s == 'idle':
+            self._show_bar(False)
             go.configure(text=T('▶ 开始识别'), state='normal')
             self._show_stop(False)
-            self.lbl_state.configure(text=T('● 未开始'), fg=theme.C_SUB)
+            self.lbl_avg.configure(text='')
+            self._sync_idle_state()
         elif s == 'running':
-            go.configure(text=T('识别中…'), state='disabled')
-            self._show_stop(True)
+            self._show_bar(True)
+            self.lbl_prog.configure(text=T('准备中…'))
             stop.configure(text=T('停止识别'), state='normal')
-            self.lbl_state.configure(text=T('● 识别中…'), fg=theme.C_ACCENT)
-        elif s == 'stopping':
-            go.configure(text=T('正在停止…'), state='disabled')
             self._show_stop(True)
+            self.lbl_state.configure(text=T('● 正在识别…'), fg=theme.C_ACCENT)
+        elif s == 'stopping':
             stop.configure(text=T('停止中…'), state='disabled')
+            self._show_stop(True)
             self.lbl_state.configure(text=T('● 正在停止…'), fg=theme.C_WARN)
         elif s == 'stopped':
+            self._show_bar(False)
             go.configure(text=T('▶ 重新开始识别'), state='normal')
             stop.configure(text=T('停止识别'), state='disabled')
             self._show_stop(False)
-            self.lbl_state.configure(text=T('● 已手动停止 · 完成 %d/%d')
+            self.lbl_avg.configure(text='')
+            self.lbl_state.configure(text=T('● 已停止 · %d/%d')
                                      % (kw.get('i', self.done), kw.get('n', self.total)),
                                      fg=theme.C_WARN)
         elif s == 'done':
+            self._show_bar(False)
             go.configure(text=T('↻ 再识别一次'), state='normal')
             stop.configure(text=T('停止识别'), state='disabled')
             self._show_stop(False)
-            tail = (T(' · 用时 %s') % fmt_dur(kw['el'])) if kw.get('el') else ''
-            self.lbl_state.configure(text=T('● 识别完成 · %d 条%s')
-                                     % (kw.get('n', len(self._plan)), tail), fg=theme.C_OK)
+            self.lbl_avg.configure(text='')
+            self._sync_idle_state()
+
+    def _show_bar(self, show: bool):
+        """「开始识别」按钮 ↔ 进度条，在同一格子里就地互换。
+
+        容器 go_slot 定高且 pack_propagate(False)，所以两者高度一致，
+        切换时下面的表格不会跳一下。
+        """
+        show = bool(show)
+        if getattr(self, '_bar_shown', None) == show:
+            return
+        try:
+            if show:
+                self.btn_go.pack_forget()
+                self.go_bar.pack(fill='both', expand=True)
+            else:
+                self.go_bar.pack_forget()
+                self.btn_go.pack(fill='both', expand=True)
+            self._bar_shown = show
+        except Exception:
+            pass
+
+    def _toast(self, text, action_text='', action=None):
+        """底部浮出一句话，几秒后自己消失（跑完的小结、模型状态都用它）。"""
+        try:
+            if getattr(self, '_toast_win', None) is None:
+                self._toast_win = Toast(self.root)
+            self._toast_win.show(text, action_text, action)
+        except Exception:
+            pass
 
     def _show_stop(self, show: bool):
         """「停止识别」按钮的显隐（平时不占位置）。
@@ -865,8 +943,8 @@ class App:
             return
         try:
             if show:
-                # after=btn_go：进度条先建的，不加这个会排到进度条右边去
-                self.btn_stop.pack(side='left', padx=(10, 0), after=self.btn_go)
+                # after=btn_plan：按钮顺序是 进度槽 → 核对并改名 → 停止
+                self.btn_stop.pack(side='left', padx=(10, 0), after=self.btn_plan)
             else:
                 self.btn_stop.pack_forget()
             self._stop_shown = show
@@ -874,16 +952,22 @@ class App:
             pass
 
     def _refresh_plan_btn(self):
-        """目录里已经有计划表时，第 3 步「核对并改名」才可点。"""
+        """目录里已经有计划表时，第 3 步「核对并改名」才可点。
+
+        可点的时候换成主色（GoSm）：全场只有一个蓝按钮，用户看蓝的就知道
+        下一步该点哪个——识别前蓝的是「开始识别」，识别完蓝的换成它。
+        GoSm 与 Sec 的 padding 一样，换样式时按钮尺寸不跳。
+        """
         if self.running:
-            self.btn_plan.configure(state='disabled')
+            self.btn_plan.configure(state='disabled', style='Sec.TButton')
             return
         d = os.path.abspath(self.var_dir.get().strip())
         try:
             has = bool(os.path.isdir(d) and engine.load_plan(d))
         except Exception:
             has = False
-        self.btn_plan.configure(state=('normal' if has else 'disabled'))
+        self.btn_plan.configure(state=('normal' if has else 'disabled'),
+                                style=('GoSm.TButton' if has else 'Sec.TButton'))
 
     def _on_dir_change(self):
         if self.running:
@@ -898,7 +982,7 @@ class App:
 
     # ------------------------------------------------------------ 处理范围
     def _refresh_scope(self):
-        """把「这次到底会处理什么」清楚地写在界面上。"""
+        """把「这次到底会处理什么」写在第 1 步按钮下面一行小字里。"""
         v, p = bool(self.var_video.get()), bool(self.var_photos.get())
         ai = bool(getattr(self, 'var_ai_desc', None) and self.var_ai_desc.get())
         # 「照片也写内容描述」是「AI描述」的子选项：总开关关着就置灰并清掉勾选。
@@ -908,18 +992,32 @@ class App:
             cb.state(['!disabled'] if (p and ai) else ['disabled'])
         if not (p and ai):
             self.var_desc_photo.set(False)
+        self._refresh_dir_btn()
         if not v and not p:
             self.lbl_scope.configure(text=T('两个都没勾选 · 不会处理任何文件'), fg=theme.C_ERR)
             return
+        # 选了个空文件夹：先把这件事说清楚，比列一串参数有用
+        d = (self.var_dir.get() or '').strip()
+        if d and os.path.isdir(d):
+            npic, nvid = self._count_media(d)
+            if npic + nvid == 0:
+                self.lbl_scope.configure(text=T('这个文件夹里没有照片或视频'),
+                                         fg=theme.C_ERR)
+                return
         bits = []
         if v:
-            bits.append(T('视频：抽帧送模型，约 11 秒/条') if ai
+            bits.append(T('视频：抽帧交给模型看') if ai
                         else T('视频：只读拍摄时间和 GPS，秒级'))
         if p:
-            bits.append(T('照片：写内容描述，约 11 秒/张') if (ai and self.var_desc_photo.get())
+            bits.append(T('照片：模型写内容描述')
+                        if (ai and self.var_desc_photo.get())
                         else T('照片：只读拍摄时间和 GPS，秒级'))
         if not ai:
             bits.append(T('纯离线，不调用模型'))
+        elif v or (p and self.var_desc_photo.get()):
+            # 原来这里写死「约 11 秒/条」，换了机器就是错的——有显卡十几秒，
+            # 纯 CPU 可能一分钟。只说会慢，不承诺具体秒数。
+            bits.append(T('速度看机器：有显卡十几秒一张，纯 CPU 会慢不少'))
         # 开了落盘，模型会多写一段 100~200 字的长描述，每条多花几秒，先说清楚
         # （设置区比这里晚建，首次调用时这些变量可能还不存在）
         g = lambda k: bool(getattr(self, k, None) and getattr(self, k).get())
@@ -928,6 +1026,52 @@ class App:
         if g('var_netgeo'):
             bits.append(T('联网精确定位：开'))
         self.lbl_scope.configure(text='　·　'.join(bits), fg=theme.C_SUB)
+
+    def _refresh_dir_btn(self):
+        """第 1 步按钮上的字：没选是「选照片文件夹」，选好了写「文件夹名 · 128 张」。
+
+        只显示文件夹名不显示全路径——全路径又长又没人看，还把按钮撑得没边。
+        """
+        try:
+            d = (self.var_dir.get() or '').strip()
+            if not d or not os.path.isdir(d):
+                self.btn_dir.configure(text=T('📁 选择照片文件夹'))
+                return
+            name = os.path.basename(os.path.normpath(d)) or d
+            npic, nvid = self._count_media(d)
+            n = npic + nvid
+            if n:
+                self.btn_dir.configure(text=T('📁 %s · %d 张') % (name, n))
+            else:
+                self.btn_dir.configure(text=T('📁 %s · 空文件夹') % name)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _count_media(d):
+        """数一下这个文件夹里有多少张照片、多少个视频（只看这一层）。"""
+        try:
+            from core.defaults import PHOTO_EXT, VID_EXT
+        except Exception:
+            PHOTO_EXT = ('.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif')
+            VID_EXT = ('.mp4', '.mov', '.mkv', '.avi', '.m4v', '.3gp', '.wmv')
+        npic = nvid = 0
+        try:
+            with os.scandir(d) as it:
+                for e in it:
+                    try:
+                        if not e.is_file():
+                            continue
+                    except Exception:
+                        continue
+                    ext = os.path.splitext(e.name)[1].lower()
+                    if ext in PHOTO_EXT:
+                        npic += 1
+                    elif ext in VID_EXT:
+                        nvid += 1
+        except Exception:
+            pass
+        return npic, nvid
 
     def open_plan(self, auto=False):
         """打开「核对并改名」窗口（时间/地点/描述都能手改）。"""
@@ -967,6 +1111,7 @@ class App:
     def _reload_tree(self, d):
         """按计划表刷新结果列表。"""
         self.tree.delete(*self.tree.get_children())
+        self._sync_empty()
         self._rows.clear()
         for i, it in enumerate(engine.load_plan(d), 1):
             st, stag = self._status_of(it)
@@ -1069,14 +1214,72 @@ class App:
         HelpDialog(self.root, self)
 
     def _maybe_help(self):
-        """首次启动自动弹一次说明；用户勾了「下次不再显示」就写进 config。"""
+        """首次启动弹一次三步向导；勾了「不再显示」就写进 config。
+
+        原来这里弹的是整篇使用说明（87 段），普通人不会读。真正要知道的只有
+        三件事：选文件夹、点开始、核对改名。详细说明仍留在标题栏的「使用说明」。
+        """
         try:
             if not engine.installed_models():
                 messagebox.showinfo(APP_TITLE, T('未找到本地模型，请在模型管理中下载 4B / 2B 模型，或选择已有模型目录。'))
                 self.open_model_dialog()
                 return
             if self._sw('help_autoshow', True):
-                self.open_help()
+                self._show_wizard()
+        except Exception:
+            pass
+
+    def _show_wizard(self):
+        """三步小向导：① 选文件夹 ② 点开始识别 ③ 核对并改名。"""
+        w = tk.Toplevel(self.root)
+        w.title(APP_TITLE)
+        w.configure(bg=theme.C_BG)
+        w.transient(self.root)
+        w.resizable(False, False)
+        pad = tk.Frame(w, bg=theme.C_BG)
+        pad.pack(fill='both', expand=True, padx=24, pady=20)
+        tk.Label(pad, text=T('三步就能改好名字'), bg=theme.C_BG, fg=theme.C_TEXT,
+                 font=(theme.FONT, 13, 'bold')).pack(anchor='w')
+        steps = ((1, T('选文件夹'), T('点那个大按钮，选一个装着照片或视频的文件夹。')),
+                 (2, T('点开始识别'), T('模型自己看画面，给每个文件起名字。第一次会慢一些。')),
+                 (3, T('核对并改名'), T('确认没问题就点应用；想改哪一行，直接点格子改。')))
+        for n, title, desc in steps:
+            row = tk.Frame(pad, bg=theme.C_BG)
+            row.pack(fill='x', pady=(12, 0))
+            tk.Label(row, text='%d' % n, bg=theme.C_ACCENT, fg='#ffffff',
+                     font=(theme.FONT, 9, 'bold'), width=2).pack(side='left', anchor='n', ipady=2)
+            box = tk.Frame(row, bg=theme.C_BG)
+            box.pack(side='left', fill='x', expand=True, padx=(10, 0))
+            tk.Label(box, text=title, bg=theme.C_BG, fg=theme.C_TEXT,
+                     font=(theme.FONT, 10, 'bold'), anchor='w').pack(fill='x')
+            tk.Label(box, text=desc, bg=theme.C_BG, fg=theme.C_SUB,
+                     font=(theme.FONT, 9), anchor='w', justify='left',
+                     wraplength=360).pack(fill='x', pady=(2, 0))
+        var = tk.BooleanVar(value=True)
+        CheckRow(pad, T('不再显示'), var, bg=theme.C_BG,
+                 font_size=10).pack(anchor='w', pady=(18, 0))
+        foot = tk.Frame(pad, bg=theme.C_BG)
+        foot.pack(fill='x', pady=(14, 0))
+
+        def close():
+            try:
+                if var.get():
+                    engine.save_config(help_autoshow=False)
+            except Exception:
+                pass
+            w.destroy()
+
+        ttk.Button(foot, text=T('知道了'), style='Go.TButton',
+                   command=close).pack(side='right')
+        w.bind('<Escape>', lambda e: close())
+        w.protocol('WM_DELETE_WINDOW', close)
+        w.update_idletasks()
+        rw, rh = w.winfo_reqwidth(), w.winfo_reqheight()
+        x = self.root.winfo_rootx() + max(0, (self.root.winfo_width() - rw) // 2)
+        y = self.root.winfo_rooty() + max(0, (self.root.winfo_height() - rh) // 3)
+        w.geometry('+%d+%d' % (x, y))
+        try:
+            w.grab_set()
         except Exception:
             pass
 
@@ -1088,18 +1291,24 @@ class App:
                 return
         ModelDialog(self.root, self)
 
-    def open_settings(self):
-        """二级窗口：所有设置（含 GPU 加速）都在这一层，不再往下套第三层。"""
+    def open_settings(self, section=None):
+        """二级窗口：所有设置（含 GPU 加速）都在这一层，不再往下套第三层。
+
+        section 给定时（例如状态栏点「● 模型待加载」传 'model'）打开后直接把
+        滚动位置带到那一组，用户不用自己在长列表里找。
+        """
         dlg = getattr(self, 'settings_dlg', None)
         try:
             if dlg is not None and dlg.winfo_exists():
                 dlg.deiconify()
                 dlg.lift()
                 dlg.focus_set()
+                if section:
+                    dlg.focus_section(section)
                 return
         except Exception:
             pass
-        self.settings_dlg = SettingsDialog(self.root, self)
+        self.settings_dlg = SettingsDialog(self.root, self, focus_section=section)
 
     def open_acceleration(self):
         """旧入口保留：GPU 加速已经并入设置窗口，这里直接开设置。"""
@@ -1181,6 +1390,7 @@ class App:
 
         self._plan = []
         self.tree.delete(*self.tree.get_children())
+        self._sync_empty()
         self.total, self.done = 0, 0
         self.t_start = time.time()
         self.stop_evt.clear()
@@ -1301,6 +1511,7 @@ class App:
                 pass
         dot = self.dot_srv
         self._srv_hint = rt.get('error') or T('点这里加载所选模型')
+        self._model_ready = False
         if self._model_busy or rt.get('busy'):
             dot.configure(text=T('● 模型操作中…'), fg=theme.C_ACCENT, cursor='arrow')
         elif rt.get('error'):
@@ -1313,9 +1524,13 @@ class App:
         elif any(m['name'] == self.var_model.get() for m in info.get('models', [])):
             self._srv_hint = T('模型已加载 · %s') % self.var_model.get()
             dot.configure(text=T('● 模型已加载'), fg=theme.C_OK, cursor='hand2')
+            self._model_ready = True
         else:
             self._srv_hint = T('识别时自动加载，也可点击提前加载')
             dot.configure(text=T('● 模型待加载'), fg=theme.C_HINT, cursor='hand2')
+        # 状态栏那一句跟着走（空闲才动；跑起来时由 _set_run_state 接管）
+        self._model_badge = (dot.cget('text'), dot.cget('fg'))
+        self._sync_idle_state()
 
     def update_prog(self, i, total, stats):
         self.total, self.done = total, i
@@ -1324,12 +1539,18 @@ class App:
         el = stats.get('elapsed', 0)
         avg = stats.get('avg', 0) or 0
         left = avg * max(0, total - i)
-        self.lbl_prog.configure(
-            text=T('已处理 %d/%d · 平均 %.1fs/条 · 已用 %s · 预计剩余 %s')
-                 % (i, total, avg, fmt_dur(el), fmt_dur(left)))
+        # 「识别中 12/128」写在按钮变的进度条上；平均/剩余单独一行放右边。
+        # 原来这里是一长串「已处理 12/128 · 平均 5.3s/条 · 已用 1 分 · 预计剩余 9 分」，
+        # 信息是全的，但挤在一个小按钮的位置上没人读得完。
+        self.lbl_prog.configure(text=T('识别中 %d/%d') % (i, total))
+        if avg > 0:
+            self.lbl_avg.configure(
+                text=T('平均约 %.1f 秒/张，还剩约 %s') % (avg, fmt_dur(left)))
+        else:
+            self.lbl_avg.configure(text=T('已用 %s') % fmt_dur(el))
         if self.state == 'running':
-            self.btn_go.configure(text=T('识别中 %d/%d') % (i, total))
-            self.lbl_state.configure(text=T('● 识别中 %d/%d') % (i, total), fg=theme.C_ACCENT)
+            self.lbl_state.configure(text=T('● 正在识别 %d/%d') % (i, total),
+                                     fg=theme.C_ACCENT)
 
     @staticmethod
     def _status_of(it):
@@ -1359,6 +1580,7 @@ class App:
             # 「上次识别留下的，没有更多细节」，把真正的原因藏起来了
             self._rows[idx] = r
             self._note_width(('old', r.get('old')), ('place', r.get('err')))
+            self._sync_empty()
             return
         st, stag = self._status_of(r)
         tags = ['odd'] if idx % 2 else []
@@ -1377,6 +1599,7 @@ class App:
             self._thumbs[idx] = r['thumb']
         self.tree.yview_moveto(1.0)
         self.show_thumb(r)
+        self._sync_empty()
 
     def _fit_prev(im):
         """缩略图按 112x54 的框等比缩放——详情条只有 68px 高。"""
@@ -1482,15 +1705,24 @@ class App:
         n = len(self._plan) if self._plan else len(engine.load_plan(d) or [])
         if self.stop_evt.is_set():          # 用户中途按了「停止识别」
             self._set_run_state('stopped', i=self.done, n=self.total)
-            self.lbl_prog.configure(text=T('已停止 · 完成 %d/%d · 用时 %s')
-                                    % (self.done, self.total, fmt_dur(el)))
+            self._toast(T('已停止 · 完成 %d/%d · 用时 %s')
+                        % (self.done, self.total, fmt_dur(el)))
             self.log(T('——— 已手动停止（已完成的 %d 条已写进计划表）———') % len(self._plan),
                      'head')
         else:
             self._set_run_state('done', n=n, el=el)
             if self.total:
                 self.pb.configure(value=100)
-            self.lbl_prog.configure(text=T('识别完成 · 共 %d 条 · 用时 %s') % (n, fmt_dur(el)))
+            # 收尾小结放在浮条里，不占状态栏那一句（那句只负责「就绪」）。
+            # 数字说明：ok = 新名字和原名不一样、需要改的；fail = 没认出来的。
+            ok = sum(1 for it in self._plan
+                     if it.get('new') and it['new'] != it.get('old'))
+            fail = sum(1 for it in self._plan if not it.get('ok', True))
+            skip = max(0, n - ok - fail)
+            tip = T('%d 张，%d 张待改名，%d 张不用改') % (n, ok, skip)
+            if fail:
+                tip += T('，%d 张没认出来') % fail
+            self._toast(tip, T('查看详细报告'), self.open_report)
             self.log(T('——— 识别结束 ———'), 'head')
         self._refresh_plan_btn()
         if not n:

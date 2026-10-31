@@ -24,9 +24,11 @@ from .acceleration import AccelerationPanel
 
 
 class SettingsDialog(tk.Toplevel):
-    def __init__(self, master, app):
+    def __init__(self, master, app, focus_section=None):
         super().__init__(master)
         self.app = app
+        self._focus_section = focus_section
+        self._card_frames = []
         self.title(T('设置 · %s') % APP_TITLE)
         self.configure(bg=theme.C_BG)
         self.transient(master)
@@ -61,6 +63,26 @@ class SettingsDialog(tk.Toplevel):
 
         fit_to_content(self, design_w=720, design_h=700, min_w=640, min_h=520)
         self.refresh()
+        if focus_section:
+            self.after(80, lambda: self.focus_section(focus_section))
+
+    def focus_section(self, name):
+        """把滚动视图带到某一组。
+
+        主窗口状态栏点「● 模型待加载」会传 'model' 过来——用户从「按开始没反应」
+        点进来，应该直接看到模型那一组，而不是自己在一屏设置里找。
+        """
+        idx = {'scope': 0, 'model': 1, 'save': 2}.get(name)
+        try:
+            if idx is None or idx >= len(self._card_frames):
+                return
+            w = self._card_frames[idx]
+            self.update_idletasks()
+            total = max(1, self._scroll.inner.winfo_height())
+            y = w.winfo_y() / float(total)
+            self._scroll.canvas.yview_moveto(min(1.0, max(0.0, y - 0.02)))
+        except Exception:
+            pass
 
     # ---------------------------------------------------------------- 版式
     def _group(self, parent, title):
@@ -72,6 +94,8 @@ class SettingsDialog(tk.Toplevel):
         card = tk.Frame(parent, bg=theme.C_CARD, highlightbackground=theme.C_LINE,
                         highlightthickness=1)
         card.pack(fill='x', pady=(0, theme.S3))
+        # 记下顺序，focus_section() 靠它定位（范围=0 / 模型=1 / 保存=2）
+        self._card_frames.append(card)
         tk.Label(card, text=title, bg=theme.C_CARD, fg=theme.C_SUB,
                  font=(theme.FONT, 10, 'bold')).pack(anchor='w', padx=theme.S4,
                                                      pady=(theme.S2 + 1, theme.S1))

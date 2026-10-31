@@ -332,6 +332,49 @@ class CheckRow(tk.Frame):
             pass
 
 
+# --------------------------------------------------------------- 手机式开关
+class SwitchRow(CheckRow):
+    """二选一用手机式开关：能拨的轨道，而不是一个小勾。
+
+    勾选框只有 22px 一个小方块，开没开要凑近看；换成 42×22 的轨道 + 圆点，
+    开的时候圆点滑到右边、轨道变主色，隔着一米也看得出状态。
+    行为、禁用、悬停高亮、trace 解绑全部复用 CheckRow，不重复实现。
+    """
+
+    def __init__(self, master, text, variable, command=None, **kw):
+        super().__init__(master, text, variable, command=command, **kw)
+        try:
+            self.box.configure(width=42)
+        except Exception:
+            pass
+        self._draw()
+
+    def _draw(self):
+        on = self._on()
+        bg = self._bg if self._enabled else theme.C_DIS_BG
+        try:
+            self.configure(bg=bg)
+            self.box.configure(bg=bg)
+            self.lab.configure(bg=bg)
+            if self.hint is not None:
+                self.hint.configure(bg=bg)
+            self.box.delete('all')
+            if not self._enabled:
+                track, knob = theme.C_LINE_D, '#f2f4f7'
+            else:
+                track = theme.C_ACCENT if on else theme.C_SW_OFF
+                knob = theme.C_SW_KNOB
+            # 轨道：两个半圆 + 中间矩形拼成一颗胶囊
+            self.box.create_oval(1, 5, 15, 19, fill=track, outline=track)
+            self.box.create_oval(27, 5, 41, 19, fill=track, outline=track)
+            self.box.create_rectangle(8, 5, 34, 19, fill=track, outline=track)
+            cx = 32 if on else 10
+            self.box.create_oval(cx - 8, 4, cx + 8, 20, fill=knob,
+                                 outline=theme.C_LINE_D, width=1)
+        except Exception:
+            pass
+
+
 # --------------------------------------------------------------- 分段选择
 class ChoiceRow(tk.Frame):
     """Label + segmented buttons — every option visible, nothing hidden in a menu."""

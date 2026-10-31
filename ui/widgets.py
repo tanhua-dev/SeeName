@@ -120,3 +120,70 @@ class Hover:
             w.wm_geometry('+%d+%d' % (x, y))
         except Exception:
             pass
+
+
+class DisabledTip(Hover):
+    """按钮禁用时，鼠标停上去说明为什么点不了。
+
+    置灰的按钮不给理由，用户只会反复点、反复没反应。「先选择文件夹」这种
+    一句话解释，放悬停里不占版面，但点不动的时候有人告诉你为什么。
+    """
+
+    def _show(self):
+        try:
+            st = self.w.state()
+            if 'disabled' not in (st if isinstance(st, (tuple, list)) else ()):
+                return          # 能点的时候不打扰
+        except Exception:
+            pass
+        super()._show()
+
+
+class Toast:
+    """底部浮出的一句话小结，几秒后自己消失。
+
+    识别跑完的统计不该常驻——状态栏只留「就绪 / 正在识别」一句，也不值得
+    为它弹一个要点确定的对话框。所以做成贴在状态栏上方的浮条：出现、读一眼、
+    自己走。带可选的一行小字按钮（例如「查看详细报告」）。
+    """
+
+    def __init__(self, master, delay=2800):
+        self.master = master
+        self.delay = delay
+        self.frame = None
+        self.job = None
+
+    def hide(self):
+        if self.job:
+            try:
+                self.master.after_cancel(self.job)
+            except Exception:
+                pass
+            self.job = None
+        if self.frame is not None:
+            try:
+                self.frame.destroy()
+            except Exception:
+                pass
+            self.frame = None
+
+    def show(self, text, action_text='', action=None):
+        self.hide()
+        try:
+            f = tk.Frame(self.master, bg=theme.C_CARD, highlightthickness=1,
+                         highlightbackground=theme.C_LINE_D)
+            tk.Label(f, text=text, bg=theme.C_CARD, fg=theme.C_TEXT,
+                     font=(theme.FONT, 10)).pack(side='left', padx=(14, 0), pady=9)
+            if action_text and action is not None:
+                lb = tk.Label(f, text=action_text, bg=theme.C_CARD, fg=theme.C_ACCENT,
+                              font=(theme.FONT, 9, 'underline'), cursor='hand2')
+                lb.pack(side='left', padx=(12, 14), pady=9)
+                lb.bind('<Button-1>', lambda e: (self.hide(), action()))
+            else:
+                tk.Frame(f, width=14, bg=theme.C_CARD).pack(side='left')
+            f.place(relx=0.5, rely=1.0, anchor='s', y=-36)
+            f.lift()
+            self.frame = f
+            self.job = self.master.after(self.delay, self.hide)
+        except Exception:
+            pass
