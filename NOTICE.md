@@ -10,11 +10,32 @@
 JamePeng/llama-cpp-python 的 `ce261d12b5810fb4c6e695efc85d5e8cf23f0630`，
 安装分发中的 MIT 许可证见 `licenses/LICENSE-llama-cpp-python.txt`。
 模型使用本地 Qwen3-VL-4B-Instruct GGUF 主模型及 mmproj 视觉投影文件。
-完整新安装包尚未构建，原生依赖的分发清单需在打包阶段核对。
+v2.0 起提供两个便携包（Vulkan 不含模型、CUDA 含模型），每个包实际包含哪些文件、
+来自哪个组件版本，都写在包内的 `BUNDLE-INFO.json` 里。
 视频读取使用 PyAV 19.0.1，在进程内调用其 FFmpeg 动态库；PyAV 分发许可见
 `licenses/LICENSE-PyAV.txt`。视频元数据写入目前仍使用 FFmpeg 命令行。
 PyAV 自身许可不能替代其所链接 FFmpeg 及其他原生库的分发要求，具体构建清单在打包阶段核对。
 以下 Ollama 运行时与发布包大小、构建信息描述的是既有旧版发行包。
+
+### v2.0 加速组件 / v2.0 GPU backend components
+
+- **Vulkan 组件**（`ggml-vulkan.dll`）：llama.cpp 的 Vulkan 后端，由本项目按固定的
+  上游提交（`27c7a769da1671c97b2e3f6cb88704a6e1e0d0cd`）从源码构建。
+  许可 **MIT**，全文随组件附于 `backends/<组件 id>/LICENSE-llama.cpp.txt`。
+  MIT 的源码提供义务已通过同版本发布的 `vulkan-*-source.zip` 满足。
+- **CUDA 组件**（`ggml-cuda.dll` + `cudart64_12.dll` / `cublas64_12.dll` /
+  `cublasLt64_12.dll`）：`ggml-cuda.dll` 同样由本项目从上述提交构建，许可 MIT。
+  三个 NVIDIA 运行时库来自 **CUDA Toolkit 12.4**，按 NVIDIA CUDA Toolkit 的
+  再分发条款（EULA 附件 A）随产品分发，条款全文随组件附于
+  `backends/<组件 id>/LICENSE-NVIDIA-CUDA.pdf`。本产品未修改这些库，
+  也不对其提供任何担保；使用它们需要单独接受 NVIDIA 的条款。
+- 两个组件都只是 llama.cpp 的动态后端插件，不含独立的可执行程序。
+
+The Vulkan and CUDA `ggml-*` plugins are built from the pinned llama.cpp commit and are
+MIT licensed, with the license text shipped alongside each component. The three NVIDIA
+runtime DLLs in the CUDA component come from CUDA Toolkit 12.4 and are redistributed under
+the CUDA Toolkit EULA (Appendix A), whose text ships with the component as
+`LICENSE-NVIDIA-CUDA.pdf`. No NVIDIA library is modified, and no warranty is provided.
 
 The current development branch uses llama-cpp-python / llama.cpp in-process.
 The binding revision is pinned in `requirements-inference.txt`; its distributed

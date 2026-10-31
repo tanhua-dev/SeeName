@@ -18,12 +18,61 @@ AI that truly *sees* your photos and videos and renames them by what's actually 
 
 作者 / By tanhua
 
-## 当前分支：本地 GGUF 开发版 / Local GGUF development version
+## v2.0 便携发行版 / Portable builds
 
-当前代码通过 Python 绑定在进程内调用 llama.cpp，默认使用 CPU，无需 Ollama。
-可选 Vulkan 加速入口位于「模型管理 → GPU 加速」。Windows x64 组件的构建、版本匹配、下载清单和发布步骤见 [Vulkan 组件说明](scripts/README-vulkan.md)。默认清单在组件正式发布前为空；此时下载按钮禁用，不会访问占位地址。GPU 支持为实验功能，需要真实硬件验证。
-Vulkan 发布同时提供运行组件和独立源码包；源码包包含完整上游源码、构建脚本、依赖版本及构建记录，可按说明重新构建。
-This branch runs llama.cpp in-process through Python on CPU, without Ollama.
+v2.0 起不再依赖 Ollama：推理由 Python 绑定在进程内调用 llama.cpp，模型是本地 GGUF，
+加速组件是单独的 llama.cpp 后端插件（`ggml-vulkan.dll` / `ggml-cuda.dll`），
+放在软件目录的 `backends/` 下，跟着文件夹一起搬走仍然有效。模型放在同级的 `models/`。
+A single portable folder: the app, the optional GPU backend plugin and the GGUF models
+all live side by side, so moving the folder keeps everything working.
+
+发行两个包 / two editions:
+
+| 版本 Edition | 内含 Contents | 大小 Size | 适用 Who |
+|---|---|---|---|
+| Vulkan 版（不含模型） | 程序 + Vulkan 加速组件 | 约 220 MB | 显卡型号不确定、想自己选模型 |
+| CUDA 版（含模型） | 程序 + CUDA 加速组件 + 4B Q4 模型 | 约 4.1 GB | NVIDIA 显卡，解压即用 |
+
+两个包都是解压即用，都不需要另外安装 Python、Ollama 或 FFmpeg。
+
+本地怎么组装 / how the bundles are assembled:
+
+```sh
+# 先由 CI 或本机 build_windows.py 产出通过验收的应用目录，再拼装
+python -B scripts/assemble_portable.py --app-dir build/windows/<id>/dist/SeeName \
+    --version v2.0.0 --flavor vulkan-免模型 --backend vulkan \
+    --component-dir backends/vulkan-<id> --output dist/bundles
+python -B scripts/assemble_portable.py --app-dir build/windows/<id>/dist/SeeName \
+    --version v2.0.0 --flavor cuda-含模型 --backend cuda \
+    --component-dir backends/cuda-<id> --models-dir models --output dist/bundles
+```
+
+组装时会按应用内置的可信清单逐个核对组件的文件名、大小和 SHA-256，对不上直接拒绝，
+不会等到用户解压之后才在界面上说"加速用不了"。
+
+## 加速组件与硬件判断 / Backend and hardware detection
+
+加速组件不随 CPU 包分发，也不从网络静默启用。首次启动按以下顺序判断一次：
+A GPU backend is never enabled silently. On first start:
+
+1. `config.json` 里的 `accel_pick` 有记录（你在面板上选过）→ 照旧。
+2. 没有记录 → 在 `backends/` 里按 CUDA → Vulkan 找已安装的组件，找到就启用。
+3. 一个都没有 → 用 CPU，且**不写** `accel_pick`，这样以后装了组件还能自动启用。
+
+自动启用的组件如果实际加载不起来（没有可用显卡、驱动太旧、DLL 被拦），会立刻退回 CPU、
+把原因写进「设置 → GPU 加速」，并把这次选择改记为 CPU —— 下次启动不会再把同一个失败重放一遍。
+用户自己在面板上选的后端失败时不做这个改写，原因照旧留在面板里。
+
+If an automatically picked backend fails to load, SeeName falls back to CPU, keeps the
+reason in the acceleration panel and records `accel_pick=cpu`, so the same failure is not
+retried on every start. A backend the user picked explicitly is never rewritten.
+
+组件怎么构建、版本怎么匹配、下载清单怎么发布，见 [Vulkan 组件说明](scripts/README-vulkan.md)
+和 [CUDA 组件说明](scripts/README-cuda.md)。
+
+## 已发布的 v1.0 旧版下载 / Legacy v1.0 downloads
+
+> v1.0 使用 Ollama 运行时，与当前代码架构不同，仅作历史版本保留。
 
 1. 使用 Python 3.12 环境，安装 Pillow、piexif，以及推理和媒体依赖：
    ```sh
@@ -98,9 +147,10 @@ SHA256 校验 / checksums:
 ## 运行配置 System requirements
 
 
-- 当前源码版使用 CPU，建议 16GB 以上内存。显卡不会自动启用；耗时取决于 CPU、图片和模型。
-  The current source version uses CPU inference; 16GB+ RAM is recommended. A GPU
-  is not enabled automatically; speed depends on the CPU, images and model.
+- 默认先用 CPU，建议 16GB 以上内存；装了加速组件的机器首次启动会自动启用显卡。
+  耗时取决于 CPU/GPU、图片和模型。CUDA 版需要 NVIDIA 显卡和 527.41 以上驱动。
+  CPU by default; a machine that already has a backend component gets it enabled on
+  first start. The CUDA edition needs an NVIDIA GPU with driver 527.41 or newer.
 - 可以在设置里关掉“AI描述”总开关，只按时间 + 地点命名；照片未开启“照片也写描述”时也不加载模型。
   Turn off the "AI description" master switch to name by time and place only.
   Photo-only jobs also skip model loading when photo descriptions are disabled.
