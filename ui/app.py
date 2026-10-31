@@ -116,6 +116,9 @@ class App:
             except Exception:
                 pass
         self._setup_style()
+        # 记住当前缩放比：换显示器 / 改 Windows 缩放后 Tk 会按新 DPI 重画文字，
+        # 但 ttk 控件的高度不会自己重算，见 _watch_scaling()
+        self._tk_scale = self._cur_scaling()
         self._build()
         self._init_mode()
         # 单项改了就让模式跟着走（设置窗口里关掉「照片也写描述」→ 显示「自定义」）
@@ -224,6 +227,30 @@ class App:
     # ------------------------------------------------------------ 样式
     def _setup_style(self):
         theme.setup_style(self.root)
+
+    def _cur_scaling(self):
+        try:
+            return float(self.root.tk.call('tk', 'scaling'))
+        except Exception:
+            return 0.0
+
+    def _watch_scaling(self):
+        """缩放比变了就把样式重刷一遍，然后重新撑开主按钮。
+
+        换显示器、插拔外接屏、改 Windows 的「缩放与布局」都会让 Tk 用新 DPI
+        重画文字，但 ttk 控件的尺寸是上次 REMAKE 算的，不会自己跟——表现就是
+        「▶ 开始识别」的字上下被切掉一截。重刷样式会让所有 ttk 控件重新排一次，
+        再把 go_slot 按新字体量一遍。
+        """
+        sc = self._cur_scaling()
+        if sc <= 0 or abs(sc - getattr(self, '_tk_scale', sc)) < 0.01:
+            return
+        self._tk_scale = sc
+        try:
+            self._setup_style()
+        except Exception:
+            pass
+        self._fit_go_slot()
 
     # ------------------------------------------------------------ 布局
     # 从上到下：标题栏 → 目录行 → 处理范围行 → 操作行 → 进度条 → 结果表 → 底部状态栏
@@ -451,10 +478,12 @@ class App:
                                  fg=theme.C_ACCENT, font=(theme.FONT, 9, 'bold'),
                                  anchor='w')
         self.lbl_prog.pack(fill='x', pady=(3, 0))
-        # 容器高度取「按钮」和「进度条那套」里更高的那个。写死 42 会把主按钮
-        # 的字上下各裁掉一点（高 DPI / 大字号下 ttk 按钮要 45，进度条那套要 53）。
-        # 建窗时两个 reqheight 还是 1，得等界面排完版再量，所以推迟到 idle。
+        # 容器高度取「按钮」「进度条那套」「字体真正需要的高度」三者里最高的。
+        # 写死 42 会把主按钮的字上下各裁掉一点；只信 reqheight 也不够——样式或
+        # DPI 变过之后 ttk 的 reqheight 会停在旧值，照样切字。所以三个时机都量：
+        # 排完版（idle）、真正上屏（Map）、缩放比变了（_watch_scaling）。
         self.root.after_idle(self._fit_go_slot)
+        self.go_slot.bind('<Map>', lambda e: self._fit_go_slot(), add='+')
 
         self.btn_plan = ttk.Button(r2, text=T('核对并改名…'), style='Sec.TButton',
                                    command=self.open_plan, state='disabled',
@@ -471,14 +500,31 @@ class App:
         self.lbl_avg.pack(side='right')
 
     def _fit_go_slot(self):
-        """让第 2 步那个定高容器装得下「按钮」和「进度条那套」里更高的一个。
+        """让第 2 步那个定高容器装得下「按钮」「进度条那套」和字体本身。
 
-        写死 42 时，高 DPI / 大字号下 ttk 按钮要 45、进度条那套要 53，
-        两套都会上下各被裁掉一点（主按钮的字看着像被切了一半）。
-        建窗时两个 reqheight 还是 1，所以等界面排完版量一次就够。
+        为什么不能只看 winfo_reqheight()：ttk 的请求高是上次 REMAKE 时算出来
+        的缓存值。字体/样式/DPI 变了之后 Tk 会按新 DPI 重画文字，但控件高度
+        还停在旧值——症状就是主按钮的字上下各被切掉一点（45 的按钮装 30 的
+        字）。所以这里直接拿样式里登记的字体量 ascent+descent，再和两个请求高
+        取最大值；量早了、量旧了都不会少给。
         """
         try:
-            want = max(42, self.btn_go.winfo_reqheight(),
+            st = ttk.Style(self.root)
+            spec = st.lookup('Go.TButton', 'font') or (theme.FONT, 11, 'bold')
+            f = tkfont.Font(root=self.root, font=spec)
+            try:
+                pads = [int(float(v)) for v in st.tk.splitlist(
+                    st.lookup('Go.TButton', 'padding') or '10')]
+            except Exception:
+                pads = [10]
+            pad_y = pads[0] if len(pads) == 1 else pads[1]
+            # 汉字用 ascent+descent 才是真正画出来的高度，linespace 会偏小
+            need_font = f.metrics('ascent') + f.metrics('descent') + 2 * pad_y + 4
+        except Exception:
+            need_font = 0
+        try:
+            want = max(42, need_font,
+                       self.btn_go.winfo_reqheight(),
                        self.go_bar.winfo_reqheight())
             if int(self.go_slot.cget('height')) != want:
                 self.go_slot.configure(height=want)
@@ -1650,6 +1696,7 @@ class App:
             self._poll()
         except Exception:
             self.log(traceback.format_exc(), 'err')
+        self._watch_scaling()
         self.root.after(120, self._tick)
 
     # ------------------------------------------------------------ 界面更新
