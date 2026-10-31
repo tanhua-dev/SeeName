@@ -55,10 +55,14 @@ class LlamaBackend:
                     self._handler_class = Qwen3VLChatHandler
                 self._gpu_ready = bool(self.accelerator and self.accelerator.load())
                 if (self.accelerator and self.accelerator.active_name
-                        and not self._gpu_ready and on_log):
+                        and not self._gpu_ready):
                     detail = self.accelerator.error
-                    if detail:
+                    if detail and on_log:
                         on_log(detail)
+                    # 启动时按「组件装没装」自动挑的后端，实际加载不起来（多半是
+                    # 这台机器没有可用显卡驱动）：退回 CPU 并落盘。不落盘的话
+                    # accel_pick 还记着它，下次启动会再白试一次。
+                    self.accelerator.demote_to_cpu()
                 self._ready = True
                 self._error = ''
                 return True
@@ -120,6 +124,9 @@ class LlamaBackend:
                         raise
                     self._gpu_ready = False
                     self.accelerator.error = self._accelerator_name + ' model initialization failed; using CPU: ' + str(error)
+                    # 自动挑的后端连模型都建不起来：同样退回 CPU 并落盘，
+                    # 免得每次启动都把同一个失败重放一遍。用户手选的保持原样。
+                    self.accelerator.demote_to_cpu()
             if self._closing.is_set() or time.monotonic() >= deadline:
                 raise TimeoutError(T('模型操作超时'))
             size = files.size_bytes

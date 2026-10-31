@@ -7,6 +7,9 @@ class AcceleratorSelector:
         self.save_config = save_config
         self.components = components
         self.active_name = ''
+        # 这轮启用是「启动时我替你挑的」还是「你自己点的」。
+        # 只有前者在加载失败时才允许自动退回 CPU：用户明确选过的，不能背着他改。
+        self._auto = False
 
     @property
     def active(self):
@@ -37,6 +40,7 @@ class AcceleratorSelector:
         return self.components[name].status()
 
     def enable(self, name, enabled, component_id=None):
+        self._auto = False      # 用户自己在面板上点的选择
         if enabled:
             for other, component in self.components.items():
                 component.enable(other == name, component_id if other == name else None)
@@ -45,6 +49,7 @@ class AcceleratorSelector:
         self._remember(name if enabled else 'cpu')
 
     def enable_cpu(self):
+        self._auto = False
         for component in self.components.values():
             component.enable(False)
         self._remember('cpu')
@@ -87,9 +92,28 @@ class AcceleratorSelector:
             except Exception:
                 continue
             self.enable(name, True)
+            self._auto = True       # enable() 把它清成了「用户选择」，这里改回「我挑的」
             self.active_name = name
             return name
         return ''
+
+    def demote_to_cpu(self) -> bool:
+        """启动时自动挑中的后端实际跑不起来：退回 CPU 并记住，下次别再白试一遍。
+
+        只对 autopick 生效。用户自己在加速面板点过「Vulkan / CUDA」，那是明确
+        的选择，失败原因照旧留在面板里让他自己判断，不能背着他改。
+        """
+        if not self._auto:
+            return False
+        name = self.active_name or self.active
+        component = self.components.get(name)
+        # enable_cpu() 会把各组件的 error 清空，失败原因得先留一份再写回去，
+        # 否则用户下次打开加速面板只看到「未启用」，不知道为什么被退回来。
+        reason = component.error if component else ''
+        self.enable_cpu()
+        if component is not None and reason:
+            component.error = reason
+        return True
 
     def install(self, name, progress=None, should_stop=None, component_id=None):
         return self.components[name].install(progress, should_stop, component_id)
