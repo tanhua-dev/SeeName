@@ -159,6 +159,15 @@ def _center_over(win, w, h) -> tuple[int, int]:
     return (x, y)
 
 
+def center_xy(win, w: int, h: int) -> tuple:
+    """给「指定尺寸」算一个和 fit_to_content 一致的居中坐标。
+
+    单独拆出来是给那些「先 withdraw 搭界面、算完尺寸再显示」的窗口用：
+    窗口还没上屏时 ``winfo_x/y/width`` 全是 1 或 0，只能自己算坐标。
+    """
+    return _center_over(win, w, h)
+
+
 # --------------------------------------------------------------- 滚动容器
 class ScrollArea(tk.Frame):
     """A vertically scrollable body; use ``.inner`` as the parent of content."""

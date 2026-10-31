@@ -36,6 +36,8 @@ class ModelDialog(tk.Toplevel):
 
     def __init__(self, master, app):
         super().__init__(master)
+        # 同设置窗：先藏起来再搭界面，否则会先在左上角闪一下默认尺寸
+        self.withdraw()
         self.app = app
         self.tasks: dict[str, DownloadTask] = {}
         self.cards: dict[str, TaskCard] = {}
@@ -52,6 +54,7 @@ class ModelDialog(tk.Toplevel):
         self._build()
         fit_to_content(self, design_w=800, design_h=620, min_w=700, min_h=520)
         self.refresh()
+        self.deiconify()          # 位置定了再显出来，避免闪一下
 
     # ---------------------------------------------------------------- 构建
     def _build(self):

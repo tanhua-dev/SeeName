@@ -428,6 +428,8 @@ class AccelerationDialog(tk.Toplevel):
 
     def __init__(self, master, app):
         super().__init__(master)
+        # 同设置窗：先藏起来再搭界面，否则会先在左上角闪一下默认尺寸
+        self.withdraw()
         self.title(T('GPU 加速'))
         self.configure(bg=theme.C_BG)
         self.transient(master)
@@ -436,6 +438,7 @@ class AccelerationDialog(tk.Toplevel):
         ttk.Button(self, text=T('关闭'), command=self._close).pack(pady=(0, theme.S3))
         fit_to_content(self, design_w=620, design_h=460, min_w=560, min_h=420)
         self.protocol('WM_DELETE_WINDOW', self._close)
+        self.deiconify()          # 位置定了再显出来，避免闪一下
 
     def refresh(self):
         self.panel.refresh()

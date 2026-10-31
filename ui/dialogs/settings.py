@@ -19,13 +19,18 @@ from strings import T
 from core.features import metadata_writing_enabled
 from .. import theme
 from ..common import APP_TITLE
-from ..controls import ChoiceRow, ScrollArea, SwitchRow, fit_to_content, work_area
+from ..controls import (ChoiceRow, ScrollArea, SwitchRow, center_xy,
+                         fit_to_content, work_area)
 from .acceleration import AccelerationPanel
 
 
 class SettingsDialog(tk.Toplevel):
     def __init__(self, master, app, focus_section=None):
         super().__init__(master)
+        # 先藏起来再搭界面：Toplevel 一建就上屏，而中间量内容高度时的一次
+        # update_idletasks() 会把它以默认尺寸（641x278）推到屏幕左上角，
+        # 之后才被挪到中间、再长高——用户看到的就是「先跳左上再回中间」。
+        self.withdraw()
         self.app = app
         self._focus_section = focus_section
         self._card_frames = []
@@ -68,9 +73,11 @@ class SettingsDialog(tk.Toplevel):
                    command=lambda: app.open_about()).pack(side='left', padx=(10, 0))
         ttk.Button(foot, text=T('关闭'), command=self.on_close).pack(side='right')
 
-        fit_to_content(self, design_w=720, design_h=700, min_w=640, min_h=520)
+        self._base_wh = fit_to_content(self, design_w=720, design_h=700,
+                                       min_w=640, min_h=520)
         self.refresh()
         self._fit_height()
+        self.deiconify()          # 尺寸、位置都定了，只亮这一帧
         if focus_section:
             self.after(80, lambda: self.focus_section(focus_section))
 
@@ -117,10 +124,13 @@ class SettingsDialog(tk.Toplevel):
             floor_h = min(cap_h, max(420, self._common_h + chrome))
             need = self._scroll.inner.winfo_reqheight() + chrome
             h = max(floor_h, min(cap_h, need))
-            w = self.winfo_width()
-            if w < 100:
-                w = max(self.winfo_reqwidth(), 640)
-            x, y = self.winfo_x(), self.winfo_y()
+            # 判断「上没上屏」只能用 ismapped：未映射时 winfo_width 未必返回 1
+            # （实测是内容的 641，位置是 0），拿它当依据会把窗口挪到左上角。
+            if not self.winfo_ismapped():
+                w = int((getattr(self, '_base_wh', None) or (720, 700))[0])
+                x, y = center_xy(self, w, h)
+            else:
+                w, x, y = self.winfo_width(), self.winfo_x(), self.winfo_y()
             # 长高时往下顶会顶出屏幕，往回收一点（居中会重新落到可视区里）
             if y + h > sh:
                 y = max(0, sh - h)
