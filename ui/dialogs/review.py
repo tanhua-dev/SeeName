@@ -396,6 +396,11 @@ class PlanDialog(tk.Toplevel):
         if self._suspend:
             return
         it, vs, v_new = row['it'], row['vs'], row['new']
+        # 没认出来的行：就算时间地名都齐、算得出名字，也不会被执行改名
+        # （apply_plan 跳过 ok=False）。预览里就别再显示一个不会落地的名字。
+        if not it.get('ok', True):
+            v_new.set(T('（没认出来，不改名）'))
+            return
         t = vs['time'].get().strip()
         dt = engine.parse_manual_time(t) if t else None
         nm = engine.name_from_item({

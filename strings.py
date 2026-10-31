@@ -1119,4 +1119,8 @@ EN.update({
     '秒改名': 'Quick rename',
     '已为你选好': 'Picked for you',
     '自定义': 'Custom',
+    '（没认出来，不改名）': "(couldn't read it — not renamed)",
+    '没认出画面': "couldn't read the picture",
+    '自检：照片模型失败 → ok=%s · 状态列=%s · 原因可查=%s':
+        'Self-check: photo analysis failure → ok=%s · status=%s · reason kept=%s',
 })

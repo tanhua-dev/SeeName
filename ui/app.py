@@ -1949,8 +1949,11 @@ class App:
                 self.pb.configure(value=100)
             # 收尾小结放在浮条里，不占状态栏那一句（那句只负责「就绪」）。
             # 数字说明：ok = 新名字和原名不一样、需要改的；fail = 没认出来的。
+            # 没认出来的即使算得出名字也不许算进「待改名」——它不会被执行，
+            # 两边都数一遍会变成「3 张里 2 张待改名 + 2 张没认出来」。
             ok = sum(1 for it in self._plan
-                     if it.get('new') and it['new'] != it.get('old'))
+                     if it.get('ok', True)
+                     and it.get('new') and it['new'] != it.get('old'))
             fail = sum(1 for it in self._plan if not it.get('ok', True))
             skip = max(0, n - ok - fail)
             tip = T('%d 张，%d 张待改名，%d 张不用改') % (n, ok, skip)
@@ -2107,6 +2110,31 @@ class App:
         self.log(T('自检：状态列文案 %s / %s / %s') % (_s1, _s2, _s3),
                  'ok' if (_s1.endswith('点我看看') and _s2.endswith('点我看看')
                           and _s3 == T('点我补时间')) else 'err')
+        # 照片的模型失败也必须标成「没认出来」：真跑一遍（桩一个必挂的后端），
+        # 断言 ok=False、状态列有话说、异常原文仍留在 raw 里可查。
+        try:
+            import tempfile as _tf
+            from datetime import datetime as _dtm
+            import core.workflow as _wf
+
+            class _Boom:
+                def describe(self, *a, **k):
+                    raise RuntimeError('selftest: backend on purpose')
+
+            _td2 = _tf.mkdtemp(prefix='seename_fail_')
+            _p2 = os.path.join(_td2, 'IMG_fail.jpg')
+            Image.new('RGB', (64, 48), (90, 120, 150)).save(_p2, 'JPEG')
+            _res = _wf.rename_one_photo(
+                _p2, describe=True, backend=_Boom(),
+                meta={'dt': _dtm(2024, 1, 15, 18, 30), 'gps': None})
+            _stf = self._status_of(_res)[0]
+            _pass = (not _res.get('ok', True)) and bool(_res.get('err')) \
+                and bool(_res.get('raw')) and _stf == T('没认出来，点我看看')
+            self.log(T('自检：照片模型失败 → ok=%s · 状态列=%s · 原因可查=%s')
+                     % (_res.get('ok'), _stf, bool(_res.get('raw'))),
+                     'ok' if _pass else 'err')
+        except Exception as _e:
+            self.log(T('自检：照片模型失败标记异常：%r') % (_e,), 'err')
         # 空表时那句引导真的存在
         self.log(T('自检：空表引导 = %r') % self.lbl_empty.cget('text')[:24], 'ok')
         # 「停止识别」平时藏起来，跑起来才出现——这是本次布局的核心改动

@@ -94,7 +94,7 @@ Click `Review and rename…` (step 3) to open the big table. Columns are `#`, `O
   No capture time could be read from that file. Click that cell to jump to the row in the review window and type the time yourself (e.g. `2025-10-11 14:30`); the row then takes part in renaming.
 
 - **A status says "Couldn't read it — click to see"?**
-  The model returned nothing usable (blurry picture, unreadable video, …). Clicking jumps to that row in the review window; you can also press `Retry` to run again, and if it still fails use `Copy log for the author`.
+  The model returned nothing usable (blurry picture, unreadable video, missing inference library, … — photos count too). **Those files keep their original names**; they are not renamed to a time-only name. Clicking jumps to that row in the review window; you can also press `Retry` to run again, and if it still fails use `Copy log for the author`. If time-and-place naming is all you need, switch to `Quick rename` and run again.
 
 - **Why is it slow?**
   The current build runs on the CPU by default, and the time depends on your GPU, the pictures and the description length. With a GPU, installing the acceleration component in Setup helps a lot; you can also switch to `Quick rename` (time and place only) or untick `Write content description for photos` to describe videos only. Stopping a run keeps the partial plan after the current file; quitting aborts inference and releases the model safely.

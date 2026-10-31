@@ -197,6 +197,12 @@ def rename_one_photo(path: str, model=MODEL, describe=False, meta=None,
     when = time_cn(dt) if dt else ''
     desc, raw, t_m, ptok = '', '', 0.0, 0
     long, kw = '', ''
+    # 照片送不进模型（推理库没装、显存不够、超时……）时：
+    #   ok=False → 状态列「没认出来，点我看看」，和视频「抽帧失败」同一套；
+    #   err 里放一句人话给结果报告，raw 里留完整异常给作者排查。
+    # 以前这里不论成败都写 ok=True，结果是一张描述全空的照片会静静地
+    # 被改成「图20240115.jpg」，用户以为模型看过了，其实一个字都没认出来。
+    vision_fail = ''
     if describe:
         try:
             raw_img = _photo_for_model(path)
@@ -214,9 +220,11 @@ def rename_one_photo(path: str, model=MODEL, describe=False, meta=None,
             raw = content
         except Exception as e:
             raw = T('（照片识别失败：%r）') % (e,)
+            vision_fail = T('没认出画面')
     new_stem = compose_name(ts, place, desc, fn, place_exact=pexact)
     return {
-        'ok': True, 'old': fn, 'kind': 'photo', 'new_stem': new_stem,
+        'ok': not vision_fail, 'old': fn, 'kind': 'photo', 'new_stem': new_stem,
+        'err': vision_fail,
         'ext': os.path.splitext(fn)[1], 'place': place, 'desc': desc,
         'km': pkm, 'gps': gps, 'gps_src': m.get('gps_src', ''),
         'addr': addr, 'place_src': psrc, 'place_exact': pexact,
