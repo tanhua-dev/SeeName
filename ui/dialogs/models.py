@@ -14,6 +14,7 @@ how many bytes are already on disk even before you touch it.
 from __future__ import annotations
 
 import os
+import stat
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -31,6 +32,15 @@ from ..download_task import (DONE, FAILED, IDLE, PAUSED, RUNNING, DownloadTask,
 # 把同一项摆在最前面，下拉的默认选中和实际用的源在视觉上就是同一个。
 SOURCE_OPTIONS = ((T('国内：ModelScope'), 'modelscope'),
                   (T('国外：Hugging Face'), 'huggingface'))
+
+
+def _force_remove(path):
+    """删一个文件；只读属性先摘掉（下下来的权重常常带着只读）。"""
+    try:
+        os.remove(path)
+    except PermissionError:
+        os.chmod(path, stat.S_IWRITE)
+        os.remove(path)
 
 
 class ModelDialog(tk.Toplevel):
@@ -171,10 +181,16 @@ class ModelDialog(tk.Toplevel):
         else:
             primary = None
 
+        # 「盘上有同名文件但内容不对」是死循环：点几次「重试」都是同一条错。
+        # 光说原因不够，得给一条出路——删掉它，再下一遍。
+        secondary = None
+        if task.state == FAILED and getattr(task.error, 'kind', '') == 'verify':
+            secondary = (T('删掉重下'), 'purge', not busy)
+
         return dict(title=name, subtitle=subtitle, badge=badge, tone=tone,
                     fraction=fraction,
                     metrics=progress_metrics(task) if fraction is not None else '',
-                    primary=primary)
+                    primary=primary, secondary=secondary)
 
     # ---------------------------------------------------------------- 刷新
     def refresh(self):
@@ -223,6 +239,36 @@ class ModelDialog(tk.Toplevel):
         self.lbl_task.configure(text='', fg=theme.C_SUB)
 
     # ---------------------------------------------------------------- 动作
+    def purge(self, name):
+        """删掉「内容和官方对不上」的那个同名文件——删前一定再问一次。
+
+        这是这类失败唯一的出路：不删它，点多少次「重试」都还是同一句错。
+        只删这一个文件，目录里别的东西不碰。
+        """
+        task = self._task(name)
+        path = getattr(task.error, 'path', '') or ''
+        if not path or not os.path.isfile(path):
+            task.forget()
+            self.refresh()
+            return
+        if not messagebox.askyesno(
+                T('删掉重下'),
+                T('要删掉这个文件吗？\n\n%s\n\n删掉之后点「下载」重新下一遍。') % path,
+                parent=self):
+            return
+        try:
+            _force_remove(path)
+        except OSError as error:
+            messagebox.showwarning(
+                T('删掉重下'),
+                T('删不掉：%s\n\n可能还被别的程序占着，把它关掉再试。') % error,
+                parent=self)
+            return
+        task.forget()
+        self.refresh()
+        self.lbl_task.configure(text=T('已删掉 %s，点「下载」重新下。') % os.path.basename(path),
+                                fg=theme.C_SUB)
+
     def _act(self, name, action):
         if action == 'use':
             self.use(name)
@@ -231,6 +277,8 @@ class ModelDialog(tk.Toplevel):
             self.lbl_task.configure(text=T('正在暂停 %s…') % name, fg=theme.C_WARN)
         elif action == 'download':
             self.start(name)
+        elif action == 'purge':
+            self.purge(name)
 
     def start(self, name):
         if name not in DOWNLOADS:
@@ -326,6 +374,12 @@ class ModelDialog(tk.Toplevel):
             initialdir=current if os.path.isdir(current) else os.path.expanduser('~'),
             parent=self)
         if not directory or os.path.abspath(directory) == os.path.abspath(current):
+            return
+        # 当场问清楚：盘在不在、是不是文件夹、能不能写。
+        # 以前只看 isdir()，指到只读目录能设置成功，等下载到一半才失败。
+        trouble = engine.models_dir_problem(directory)
+        if trouble:
+            messagebox.showwarning(T('选择模型目录'), trouble, parent=self)
             return
 
         def switch():

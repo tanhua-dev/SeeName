@@ -1124,3 +1124,67 @@ EN.update({
     '自检：照片模型失败 → ok=%s · 状态列=%s · 原因可查=%s':
         'Self-check: photo analysis failure → ok=%s · status=%s · reason kept=%s',
 })
+
+# ---- P2/P3/P4：下载失败说人话、删掉重下、模型目录可写检查（自动追加）
+EN.update({
+    '这个位置不存在或不是一个文件夹：%s':
+        "That location doesn't exist or isn't a folder: %s",
+    '读不了这个位置：%s':
+        "Can't read that location: %s",
+    '这个文件夹不让写：%s':
+        "This folder isn't writable: %s",
+    '这个文件夹不让写（多半是系统目录或只读盘）：%s':
+        "This folder can't be written to (probably a system folder or a read-only drive): %s",
+    '这个盘现在不在：%s\n\nU 盘或移动硬盘是不是没插上？':
+        "That drive isn't connected right now: %s\n\nIs the USB stick or external drive plugged in?",
+    '这个位置不存在：%s':
+        "That location doesn't exist: %s",
+    '这里是个文件，不是文件夹：%s':
+        "That's a file, not a folder: %s",
+    '%s\n\n换一个能写的文件夹，比如自己新建的 D:\\模型。':
+        '%s\n\nPick a folder you can write to — for example a new folder you made on D:.',
+    '读不了这个文件（可能被别的程序占着）：%s':
+        "Can't read this file (another program may be holding it): %s",
+    '已有同名文件，但内容和官方的对不上：%s':
+        "A file with the same name is already there, but its contents don't match the official copy: %s",
+    '磁盘空间不够：%s 至少还要 %s，现在只剩 %s。\n\n腾点空间，或把模型库换到别的盘再试。':
+        'Not enough disk space: %s needs at least %s more, but only %s is left.\n\nFree up some space, or move the model library to another drive.',
+    '下载源说这个文件下不了（HTTP %d）：%s\n\n换个「下载来源」再试。':
+        "The download source says this file can't be fetched (HTTP %d): %s\n\nTry the other download source.",
+    '连不上下载服务器：%s\n\n多数是网络不通，或这个源在国内访问不了。把底部「下载来源」换成另一个再试。':
+        "Can't reach the download server: %s\n\nUsually the network is blocked, or this source is unreachable from where you are. Switch the download source at the bottom to the other one and try again.",
+    '下载被跳转到了不安全的地址，已停止。':
+        'The download was redirected to an insecure address, so it was stopped.',
+    '这个下载源返回的数据范围和预期对不上，已停止。\n\n把模型文件夹里的 %s.part 删掉，重新下一遍。':
+        "This source returned a byte range that doesn't match, so it was stopped.\n\nDelete %s.part in the model folder and download again.",
+    '下载源返回了意外状态（HTTP %d），可能文件还没传完或被限流，过一会儿再试。':
+        "The source returned an unexpected status (HTTP %d); the file may still be uploading or you're being rate-limited. Try again in a while.",
+    '下载到的数据比预期大，已停止。':
+        'The downloaded data is larger than expected, so it was stopped.',
+    '写文件失败（磁盘满了或没有权限）：%s':
+        "Couldn't write the file (disk full or no permission): %s",
+    '下载没有下完：%s 还差 %s。\n\n点「继续」会接着下。':
+        "The download didn't finish: %s is still %s short.\n\nPress Resume to continue.",
+    '%s 下完之后校验没通过（文件在传输中坏了），已删掉这一份，点「重试」重新下。':
+        '%s failed verification after downloading (it got corrupted in transit). That copy was deleted — press Retry to download it again.',
+    '下载源不认识：%s':
+        'Unknown download source: %s',
+    '域名解析失败，这台电脑上不了这个网址':
+        "Domain lookup failed — this computer can't reach that address",
+    '连接超时':
+        'Connection timed out',
+    '安全连接（HTTPS）没建立起来':
+        "Couldn't establish the secure (HTTPS) connection",
+    '对方拒绝连接':
+        'The server refused the connection',
+    '出了点意外：%s':
+        'Something unexpected happened: %s',
+    '删掉重下':
+        'Delete and re-download',
+    '要删掉这个文件吗？\n\n%s\n\n删掉之后点「下载」重新下一遍。':
+        'Delete this file?\n\n%s\n\nAfter deleting, press Download to get it again.',
+    '删不掉：%s\n\n可能还被别的程序占着，把它关掉再试。':
+        "Couldn't delete it: %s\n\nAnother program may be holding it — close that program and try again.",
+    '已删掉 %s，点「下载」重新下。':
+        'Deleted %s — press Download to get it again.',
+})

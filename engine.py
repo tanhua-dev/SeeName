@@ -180,6 +180,14 @@ def set_models_dir(path, on_log=None) -> bool:
     return model_store.set_directory(path, on_log=on_log)
 
 
+def models_dir_problem(path) -> str:
+    """这个目录能不能当模型库；能就返回空串，不能就给一句人话原因。
+
+    界面在「选择模型目录」当场问一次，别等下载到一半才炸。
+    """
+    return model_store.directory_problem(path)
+
+
 def server_info() -> dict:
     """兼容入口：已初始化状态及加载模型的文件大小。"""
     status = model_backend.status()

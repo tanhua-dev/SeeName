@@ -32,7 +32,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-from inference.downloads import DownloadCancelled
+from inference.downloads import DownloadCancelled, DownloadError
 from strings import T
 
 from . import theme
@@ -66,6 +66,7 @@ class DownloadTask:
         self.stage = ''          # 'verify' = 正在算 SHA-256
         self.state = IDLE
         self.message = ''
+        self.error = None        # 失败时留着原异常：界面要按 kind 决定给什么出路
         self.speed = 0.0
         self.eta = None
         self.cancel = threading.Event()
@@ -104,6 +105,7 @@ class DownloadTask:
         self.cancel.clear()
         self.finished.clear()
         self.message = ''
+        self.error = None
         self.stage = ''
         self.speed = 0.0
         self.eta = None
@@ -133,7 +135,12 @@ class DownloadTask:
                 self.state = FAILED
                 self.stage = ''
                 self.resume = self.done
-                self.message = str(error) or error.__class__.__name__
+                self.error = error
+                # DownloadError 里已经是人话（中文，且带下一步怎么办）；
+                # 其余意外保留原文，但加一句「出了点意外」，别让用户面对裸栈信息
+                text = str(error) or error.__class__.__name__
+                self.message = text if isinstance(error, DownloadError) else (
+                    T('出了点意外：%s') % text)
             finally:
                 self.speed = 0.0
                 self.eta = None
@@ -155,6 +162,7 @@ class DownloadTask:
         if self.state in (DONE, FAILED):
             self.state = IDLE
             self.message = ''
+            self.error = None
 
     # ---------------------------------------------------------------- 进度
     def progress(self, done, total=0, stage=''):

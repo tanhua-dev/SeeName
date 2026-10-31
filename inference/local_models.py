@@ -32,17 +32,57 @@ def _user_base() -> str:
     return base
 
 
+def _write_trouble(path: str) -> str:
+    """这个目录为什么写不进去；能写就返回空串。
+
+    老办法是「写一个 .write_probe 再删掉」。两个毛病：
+    一是删除被安全软件或受限环境拦下时，界面会连弹错误窗（一次重试 50 次），
+    而且拦下之后就判定成「不可写」，模型库白白退回用户目录；
+    二是拦下后那个 1 字节的探针文件会残留在模型库里。
+
+    现在改成向目录本身要一个「可写句柄」：不建文件、不删文件，判完就关。
+    Windows 上 Directory + GENERIC_WRITE 只有在真的能写时才会给你句柄；
+    其它系统用 os.access（posix 下它看的是真实权限位）。
+    """
+    try:
+        if not os.path.isdir(path):
+            return T('这个位置不存在或不是一个文件夹：%s') % path
+    except OSError:
+        return T('读不了这个位置：%s') % path
+    if os.name != 'nt':
+        return '' if os.access(path, os.W_OK) else T('这个文件夹不让写：%s') % path
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.CreateFileW.restype = ctypes.c_void_p
+        kernel32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32,
+                                         ctypes.c_uint32, ctypes.c_void_p,
+                                         ctypes.c_uint32, ctypes.c_uint32,
+                                         ctypes.c_void_p]
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        GENERIC_WRITE = 0x40000000
+        OPEN_EXISTING = 3
+        FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+        INVALID = ctypes.c_void_p(-1).value
+        handle = kernel32.CreateFileW(os.path.abspath(path), GENERIC_WRITE, 0x7,
+                                      None, OPEN_EXISTING,
+                                      FILE_FLAG_BACKUP_SEMANTICS, None)
+        if handle in (None, INVALID):
+            return T('这个文件夹不让写（多半是系统目录或只读盘）：%s') % path
+        kernel32.CloseHandle(handle)
+        return ''
+    except Exception:
+        # 判断本身出错时不拦着用户：真写不进去，下载时会报得更具体
+        return ''
+
+
 def _writable(path: str) -> bool:
     """目录能不能真的写进去（只读的安装目录要能识别出来）。"""
     try:
         os.makedirs(path, exist_ok=True)
-        probe = os.path.join(path, '.write_probe')
-        with open(probe, 'wb') as stream:
-            stream.write(b'1')
-        os.remove(probe)
-        return True
     except OSError:
         return False
+    return not _write_trouble(path)
 
 
 
@@ -162,11 +202,32 @@ class LocalModelStore:
     def exists(self, name: str, installed: dict | None = None) -> bool:
         return name in (self.installed() if installed is None else installed)
 
+    def directory_problem(self, path: str) -> str:
+        """选目录时先问一遍：在不在、是不是文件夹、能不能写。
+
+        以前只 `isdir()`：指到「Program Files」这种只读目录能设置成功，
+        等下载到一半才炸 PermissionError；指到拔掉的 U 盘/移动硬盘，
+        直接把 WinError 3 的原文丢给用户。现在当场说清楚。
+        """
+        path = os.path.abspath(os.path.expanduser(str(path)))
+        drive, _ = os.path.splitdrive(path)
+        if drive and not os.path.exists(drive + os.sep):
+            return T('这个盘现在不在：%s\n\nU 盘或移动硬盘是不是没插上？') % (drive + os.sep)
+        if not os.path.exists(path):
+            return T('这个位置不存在：%s') % path
+        if not os.path.isdir(path):
+            return T('这里是个文件，不是文件夹：%s') % path
+        trouble = _write_trouble(path)
+        if trouble:
+            return T('%s\n\n换一个能写的文件夹，比如自己新建的 D:\\模型。') % trouble
+        return ''
+
     def set_directory(self, path: str, on_log=None) -> bool:
         path = os.path.abspath(os.path.expanduser(path))
-        if not os.path.isdir(path):
+        trouble = self.directory_problem(path)
+        if trouble:
             if on_log:
-                on_log(T('模型目录不存在或无法读取：%s') % path)
+                on_log(trouble)
             return False
         with self.lock:
             self.on_change()
