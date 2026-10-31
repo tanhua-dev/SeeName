@@ -17,10 +17,11 @@ import engine
 import strings
 from strings import T
 from core.features import metadata_writing_enabled
+from core.defaults import MODES as MODE_PRESETS
 from . import theme
 from .common import APP_AUTHOR, APP_SUB, APP_TITLE, APP_VER, asset_path, cut, fmt_dur, open_path
 from .widgets import Hover, Tip, Toast, DisabledTip, RowPreview
-from .controls import CheckRow
+from .controls import CheckRow, ChoiceRow, gpu_memory
 from .dialogs.information import AboutDialog, HelpDialog, help_path
 from .dialogs.models import ModelDialog
 from .dialogs.acceleration import AccelerationDialog
@@ -85,6 +86,10 @@ class App:
         self.var_video = tk.BooleanVar(value=True)
         self.var_photos = tk.BooleanVar(value=True)
         self.var_desc_photo = tk.BooleanVar(value=True)
+        # 首页「模式」：smart 智能命名 / quick 秒改名 / custom 手动改过单项（S-18）
+        self.var_mode = tk.StringVar(value=str(cfg.get('mode') or ''))
+        self._mode_auto = False          # 这次是程序替你选的（显示「已为你选好」）
+        self.choice_mode = None
         # 这些控件只在设置窗口里存在；窗口没开时保持 None，用到的地方都要判空
         self.cb_model = None
         self.btn_model = None
@@ -112,6 +117,10 @@ class App:
                 pass
         self._setup_style()
         self._build()
+        self._init_mode()
+        # 单项改了就让模式跟着走（设置窗口里关掉「照片也写描述」→ 显示「自定义」）
+        for _var in (self.var_ai_desc, self.var_desc_photo):
+            _var.trace_add('write', lambda *a: self._sync_mode_hint())
         self._refresh_scope()
         self._set_run_state('idle')
         self._refresh_plan_btn()
@@ -280,6 +289,115 @@ class App:
         ttk.Button(head, text=T('⚙ 设置'), command=self.open_settings,
                    width=theme.button_width(9, 12)).pack(side='right', padx=(0, 8), pady=(4, 0))
 
+    # ---------------------------------------------------------------- 模式
+    def _build_mode(self, parent):
+        """「模式」二选一：要不要让模型看画面（S-18）。
+
+        普通人不需要先想明白「AI 描述 / 照片描述 / 模型 / 加速」四个开关该怎么配，
+        他只需要回答一个问题：让不让模型看画面。让 = 智能命名，不让 = 秒改名。
+        单项仍然都能在设置里改，改完这里显示「自定义」，不强行拉回某个模式。
+        """
+        row = tk.Frame(parent, bg=theme.C_CARD)
+        row.pack(fill='x', pady=(0, 9))
+        self.choice_mode = ChoiceRow(
+            row, T('模式'),
+            [(T('智能命名'), 'smart'), (T('秒改名'), 'quick')],
+            self.var_mode, command=self._on_mode_pick, bg=theme.C_CARD)
+        self.choice_mode.pack(side='left')
+        self.lbl_mode = tk.Label(row, text='', bg=theme.C_CARD, fg=theme.C_HINT,
+                                 font=(theme.FONT, 9), anchor='w')
+        self.lbl_mode.pack(side='left', padx=(10, 0))
+
+    def _recommended_mode(self) -> str:
+        """按这台机器推荐一次：有显卡就走智能命名，纯 CPU 先给秒改名。
+
+        判「有没有显卡」看两处：已经装好的加速组件（autopick 会顺手启用），
+        以及 nvidia-smi 报出来的硬件。只看组件是不够的——新机器上组件还没下，
+        但显卡明明在，不该因此把人推到「秒改名」。
+        探测给 2 秒上限：这是在启动路径上，宁可判成 CPU 也不能卡住首屏。
+        """
+        try:
+            if engine.accelerator.active_name:
+                return 'smart'
+            if engine.auto_pick_accelerator():
+                return 'smart'
+        except Exception:
+            pass
+        try:
+            if gpu_memory(timeout=2.0).get('name'):
+                return 'smart'
+        except Exception:
+            pass
+        return 'quick'
+
+    def _init_mode(self):
+        """第一次运行替用户选一次；之后一律以 config.json 里的 mode 为准。"""
+        saved = str((engine.config() or {}).get('mode') or '')
+        if saved in ('smart', 'quick', 'custom'):
+            self.var_mode.set(saved)
+            self._sync_mode_hint()
+            return
+        mode = self._recommended_mode()
+        self._mode_auto = True
+        self.var_mode.set(mode)
+        self._apply_mode(mode)
+
+    def _apply_mode(self, mode):
+        """把模式对应的开关真的写进变量和 config.json。"""
+        preset = MODE_PRESETS.get(mode)
+        if not preset:
+            return
+        self.var_ai_desc.set(bool(preset.get('ai_desc')))
+        self.var_desc_photo.set(bool(preset.get('desc_photo')))
+        self._save_sw('ai_desc', self.var_ai_desc)
+        try:
+            engine.save_config(mode=mode)
+        except Exception:
+            pass
+        self._refresh_scope()
+        self._sync_mode_hint()
+
+    def _on_mode_pick(self, *a):
+        mode = self.var_mode.get()
+        if mode not in MODE_PRESETS:
+            return
+        self._mode_auto = False
+        self._apply_mode(mode)
+
+    def _sync_mode_hint(self):
+        """按当前开关组合回填模式，并写右边那行小字。
+
+        组合对不上任何预设（用户在设置里单独改过某一项）就显示「自定义」，
+        而不是硬拉回上一次点的那个模式——那样界面上写的和实际跑的就对不上了。
+
+        这里只改界面、**不写 config**：`_sync_mode_hint` 会被变量的每次变动触发，
+        包括程序自己的临时切换（例如关掉「照片」时 `_refresh_scope` 会顺手清掉
+        「照片也写描述」）。那种中间态要是也落盘，config.json 里就会留下一个
+        谁也没点过的「自定义」。真正要记的选择，由 `_apply_mode` 写。
+        """
+        ai = bool(self.var_ai_desc.get())
+        desc = bool(self.var_desc_photo.get())
+        if not ai:
+            mode = 'quick'
+        elif desc:
+            mode = 'smart'
+        else:
+            mode = 'custom'
+        try:
+            if self.var_mode.get() != mode:
+                self.var_mode.set(mode)
+        except Exception:
+            pass
+        hint = ''
+        if mode == 'custom':
+            hint = T('自定义')
+        elif self._mode_auto:
+            hint = T('已为你选好')
+        try:
+            self.lbl_mode.configure(text=hint)
+        except Exception:
+            pass
+
     def _build_control(self, parent):
         """两行走完：① 一个大按钮选文件夹 ② 开始识别 → 核对并改名。
 
@@ -294,8 +412,11 @@ class App:
         inner = tk.Frame(card, bg=theme.C_CARD)
         inner.pack(fill='x', padx=12, pady=10)
 
+        # —— 第 0 步：模式（调不调模型，只有这一个问题的答案）
+        self._build_mode(inner)
+
         # —— 第 1 步：一个按钮
-        # 预设改成标题栏下面的「模式」单选（见 _build_mode），这里不再放下拉。
+        # 预设改成这里的「模式」二选一，不再放下拉。变量留着是为了兼容旧配置。
         self._preset_disp = {T(k): k for k in engine.PRESETS}
         self.var_preset = tk.StringVar(value='')
         self.cmb_preset = None
@@ -861,6 +982,12 @@ class App:
                 w.state(spec)
             except Exception:
                 pass
+        # 模式是 tk.Label 拼的分段按钮，没有 ttk 的 state()，走自己的开关
+        try:
+            if self.choice_mode is not None:
+                self.choice_mode.set_enabled(not busy)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 运行状态
     def _set_run_state(self, s, **kw):

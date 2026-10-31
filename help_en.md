@@ -1,7 +1,5 @@
 # SeeName user guide
 
-Video probing and frame extraction use PyAV in-process and need no FFmpeg executable. Writing video file metadata still requires the FFmpeg CLI; that operation has not migrated yet.
-
 > In one line: it turns folders of unreadable names like `VID_20251011_143032.mp4` or `IMG_8932.jpg` into names you can actually read — **date taken + place + what is in the picture**.
 
 ## 1. What it does
@@ -10,103 +8,123 @@ Video probing and frame extraction use PyAV in-process and need no FFmpeg execut
 - The three parts become the new file name, for example `视20251011成都肖家河_洗车.mp4` or `图20241219成都武侯区_猫侧脸特写.jpg`.
   - `视` marks a video, `图` marks a photo; then the date, then place and description joined by `_`. Any part that is missing is simply left out.
 - Everything runs locally. **Your photos and videos never leave this computer.**
-- Click `? User guide` at the top right any time to reopen this window.
+- Click `? User guide` at the top right any time to reopen this page.
 
-## 2. Three steps to start
+## 2. Three minutes to a renamed folder
 
-1. **Pick a folder**: type a path in the `Folder` box, or click `Browse…`. The drop-down on the right holds saved preset folders — click one to jump to it.
-2. **Pick what to process**: under ` Scope `, tick `Videos` and/or `Photos`; the `AI description` box at the front is the master switch.
-   - `AI description` is on by default: with it off, neither videos nor photos go through the model — files are named by `capture time + place` only, and the run finishes in seconds.
-   - `Write content description for photos` is on by default: each photo spends additional CPU time with the model and comes back with a description like "cat close-up". Untick it for a fast pass that only reads time and GPS. It is a sub-option of `AI description` and is greyed out when the master switch is off.
-3. **Click `▶ Start recognition`**: when the progress bar finishes, results appear in the `Results` table below.
-   - To actually rename files: click `Review and rename…` (step 3) → check the table, then `Apply rename`.
-   - To just preview: stop here. **Nothing is renamed until you click `Apply rename`.**
+Pick a mode first, then go through three steps. On the very first launch a small three-step wizard pops up; tick `Don't show again` and it stays away.
 
-If no local models are found, Model manager offers downloads of 4B / 2B Q4 / Q8 pairs from Hugging Face or ModelScope, with cancellation, resume and SHA-256 verification. Existing directories remain supported. Default roots: Windows `%LOCALAPPDATA%\SeeName\models`, macOS `~/Library/Application Support/SeeName/models`, Linux `${XDG_DATA_HOME:-~/.local/share}/SeeName/models`; pairs live in `Qwen3-VL-4B-Instruct-GGUF` / `Qwen3-VL-2B-Instruct-GGUF` subdirectories. A custom model directory also becomes the download target. Uses in-process llama.cpp on CPU, without Ollama.
+1. **Pick a mode** (the row under the title bar):
+   - `Smart rename` (default): the model looks at the picture and writes a description such as "cat close-up". Slower, but the names read like a person made them.
+   - `Quick rename`: the model is never called; names come from capture time and GPS only, done in seconds.
+   - On first launch the app picks one for your machine (a GPU gets `Smart rename`, CPU only gets `Quick rename`) and writes `Picked for you` next to it. Once you click one yourself it stops choosing for you. If you later change a single option in Setup, this row shows `Custom` instead.
+2. **① 📁 Choose photo folder**: one big button — click it and pick a folder. Afterwards the button reads "folder name · 128 items"; an empty folder reads "empty folder", and the small line underneath says so too.
+3. **② ▶ Start analysis**: click it. While it runs the button turns into a progress bar in place, with "Analyzing 3/128" and "avg 1.2s per item, about 2 minutes left" beside it. To stop, click `Stop` that appears next to it — it stops after the current file, and everything already done is kept.
+4. **③ Review and rename…**: becomes clickable when the run finishes. Open it, fix what you want, then click `Apply renames`.
+   - Just want a preview: stop here. **Nothing is renamed until you click Apply renames.**
 
-Models load when recognition starts, or when you click the status indicator. Changing the model or directory releases the old model without moving weights. The vision encoder initializes during the first image request.
+If no model is downloaded yet, starting a run offers to open the model manager. Downloads come from ModelScope (China) or Hugging Face (international) and cover 4B / 2B models, with pause, resume and SHA-256 verification, and you can point it at an existing folder instead. The model library lives in `models` inside the program folder — copy that folder to another machine and it keeps working.
 
 ## 3. Parts of the window
 
-- **Folder / Browse… / preset drop-down**: choose the folder to process.
-- ** Scope **: the master switch `AI description` first, then `Videos`, `Photos`, and `Write content description for photos` (a sub-option of the master switch).
-- **`▶ Start recognition`**: starts the run. While it runs, `Stop recognition` appears next to it; clicking it stops after the current file, and everything already done is kept.
-- **Progress bar + status light**: the light on the right reads `● Not started`, `● Recognizing…`, `● Stopping…`, `● Stopped manually · x/y done` or `● Done · x items`.
-- **Results table**: columns are `#`, `Original name`, `New name`, `Place`, `Description`, `Time`, `Status`. Below it are `Copy all` and `Clear`.
-- **Selected-row strip** (under the table): click a row and it shows the thumbnail (the image the model actually saw), `original → new` and the place/time taken. When a name is clipped in the table, this is where you read it in full.
-- **`⚙ Settings`** (top right of the window): every option lives on this one page — recognition, models, place lookup, output, GPU acceleration, language. Changes save immediately. Checkboxes are a box with a tick, and the whole row is clickable.
-- **Bottom status bar**: model readiness/loading/error state, then `llama.cpp · CPU`, then the model directory. Click the status to load in advance; hover for errors or full paths.
-- **`⚙ Settings`** (top right): two sections — `Common` holds just three groups (scope, model, save mode); everything technical is folded under `Advanced settings`. Changes save instantly, no OK button.
-- **`▸ Run log`**: expands to show details for each file. It opens by itself when something goes wrong.
+Top to bottom:
+
+- **Mode**: `Smart rename` / `Quick rename`, possibly with `Picked for you` or `Custom` next to it.
+- **① 📁 Choose photo folder**: the big button.
+- **A small line under it** saying what this run will do, e.g. "Videos: frames sent to the model · Photos: model writes a description · Speed depends on your machine: seconds per item with a GPU, much slower on CPU only". In the fully offline mode it says "fully offline, no model calls" instead.
+- **② Buttons**: `▶ Start analysis`; while running it becomes a progress bar in place (no extra row). Next to it is `Review and rename…`, which only lights up once analysis finished.
+- **Results** table: four columns — `Original name`, `New filename`, `Description`, `Status` — plus one text button `Open folder` at the top right of the header.
+  - When the table is empty the middle says: "Pick a folder, click Start — I will take it from there".
+  - Hover a row for half a second and a preview image plus "original → new" floats up.
+  - **The Status column is clickable**: `Couldn't read it — click to see`, `Rename failed — click to see` and `Click to add time` jump straight to that row in the review window. The other states are `✓ Renamed`, `✓` and `—`.
+- **Selected-row strip**: click a row and it shows the thumbnail, `original → new`, plus place · elapsed time · frames. When a name is clipped in the table, this is where you read it in full.
+- **Bottom status bar**: one sentence on the left — `● Ready`, `● Analyzing 3/128`, `● Stopped · 3/128`. Click it to see the model state; if the model is not ready yet it jumps to the Model group in Setup. The version number sits on the right.
+- **The run log is no longer on screen**: when you need it, the error dialog has `Copy log for the author`. When a run finishes a small toast summarises it (how many items, how many to rename); click `View full report` on it for the full report.
+- **⚙ Settings** (top right): two parts — `Common` holds just three groups (scope, model, save mode); everything technical is folded under `▸ Advanced settings`, collapsed by default. Changes save instantly, no OK button.
 
 ## 4. Every setting, explained
 
-- **AI description**: **master switch, on by default**. While on, videos are sampled into frames and photos (if `Write content description for photos` is ticked) are sent to the local vision model, which is what produces descriptions like "cat close-up". **With it off the model is never called**: no frame extraction, no model pass — everything is named by `capture time + place` only and finishes in seconds. Use it on slow machines, or when you just want files sorted by time and place first. While off, `Write content description for photos` is greyed out and the app no longer asks you to prepare a local model first.
-- **Frames per video**: how many images are sent to the model. `Auto` picks by length (2 for short clips, 6 for long ones) — usually leave it. Raise it (4/6/8) if results look off; lower it for simple footage to go faster.
-- **Max items**: how many files this run handles; `0` means all. Set `10` to try a small batch first.
-- **Re-process already renamed**: off by default. Tick it to re-recognize files that already have a `视2024…` style name; leave it off to skip them and work in batches.
-- **Model**: select 4B / 2B Q4 / Q8 or import existing 4B F16 weights. Default: 4B Q4. Model manager supports downloads and local directory selection.
-- **Online precise location**: **off by default**. While off the app sends no network requests at all and places come from the built-in offline database (district level). Turn it on to query an online map service for street/town level names — if it fails or you are offline, it silently falls back to the offline database.
-- **Amap API key**: with online location on, this is used for coordinates inside China to get street-level addresses. Get a free key at lbs.amap.com; without it, Chinese coordinates keep using the offline database (coordinates outside China are unaffected — they use Nominatim).
-- **Address detail**: how precise online lookups should be — `District` or `Street`.
-- **Write file metadata**: writes the generated long description into the file itself (EXIF/XMP for photos, container tags only for videos — never re-encoded), so it travels with the file. Anything you wrote by hand is never overwritten.
-- **Create .ai.txt summary**: writes a `.ai.txt` next to each file — first line place, second line the description.
-- **Create 目录说明.md**: after a batch, writes a `目录说明.md` in the folder root summarizing everything.
-- **Language**: `中文` / `English`. **Restart the app** for it to take effect.
+**Common (the three groups you see when Setup opens)**
 
-## 5. After recognition: review, rename, roll back
+- **Scope**: the master switch `AI description`, plus `Videos`, `Photos` and `Write content description for photos`. After a change, the line under the big button on the main window immediately says what the next run will do.
+- **Model**: the current-model drop-down plus `Model manager…`. The line below says it plainly: the model comes in two parts — keep them in one folder and the model manager wires it up.
+- **Acceleration**: by default it only reports the verdict — "GPU detected — using Vulkan acceleration", or "No usable GPU acceleration — running on CPU (slower)". To pin it yourself, click `Change` on the right and pick `Auto` / `CUDA` / `Vulkan` / `CPU only`.
+- **Save mode**: `Simple` (rename only, no extra files — **default**) or `Detailed` (also keeps the `.ai.txt` summary and `目录说明.md`, and writes file metadata). This is the master switch for the three detail options under Advanced.
 
-Click `Review and rename…` (step 3). The big table has columns `Original name`, `Capture time`, `Place`, `Description`, `Resulting new name`:
+**Advanced (only after clicking `▸ Advanced settings`)**
 
-- Time, place and description are **editable**; the new name below updates as you type.
-- Leaving time empty means this file is not renamed.
-- The `↓` next to a cell fills that value down into the following empty cells (one entry covers a whole scene).
-- `Find and replace…`: fix the same wrong name scattered across many rows in one go.
-- `Only empty`: show only the rows still missing a value.
-- Move between pages with `← Previous` / `Next →`; page size is set next to `Per page`.
-- Click `Apply rename` to actually rename; `Close without renaming` leaves files alone.
-- After renaming, a result window appears where you can `Copy list` or open the rename ledger.
+- **Analysis**
+  - **Frames**: how many images per video go to the model. `Auto` picks by clip length (2 for short clips, 8 for long ones) — usually leave it. Raise it (4/6/8) if results look off; lower it for simple footage to go faster.
+  - **Max items**: how many files this run may process; `0` means all. Put `10` here to try ten first.
+  - **Reprocess already-renamed**: off by default. When on, files already named `视2024…` are analysed again; when off they are skipped, which suits batch-by-batch work.
+- **Place names & location**
+  - **Online precise location**: **off by default**. While off the app sends no network packets at all and place names come from the built-in offline database (district level). When on it uses an online map service for street/town level addresses; failures or no network fall back to the offline database without an error.
+  - **Amap API key**: with online lookup on, this key resolves street-level addresses in mainland China. Get one free at lbs.amap.com; leave it blank to stay on the offline database (addresses outside China use Nominatim).
+  - **Address detail**: how precise online lookup should be — `District` or `Street`.
+- **How results are saved (details)**
+  - **Write metadata into files**: puts the AI description inside the file itself (EXIF/XMP for photos, container tags for videos without re-encoding), so it travels with the file. Notes you wrote yourself are never overwritten.
+  - **Write .ai.txt summaries**: a matching `.ai.txt` next to each file — first line the place, second line the description.
+  - **Write folder summary (目录说明.md)**: after a batch, one `目录说明.md` at the folder root listing the files and what is in them.
+- **GPU acceleration**: optional Vulkan / CUDA components. Install one to use the GPU; without one the CPU is used. GPU drivers must be installed separately. Each card has one button (`Download and enable` / `Enable` / `Enabled` / `Pause` / `Resume`), with `Use CPU (no acceleration)` below.
+- **Language**: `中文` / `English`. Restart the app to apply.
 
-**Renamed something by mistake?** `Roll back renames in this folder…` sits at the bottom left of the review window and restores the batch using the ledger. This relies on the ledger, so if you later renamed those files yourself by hand it can no longer find them — back up before a large batch.
+## 5. After a run: review, rename, undo
 
-## 6. FAQ
+Click `Review and rename…` (step 3) to open the big table. Columns are `#`, `Original name`, `Time taken`, `Location`, `Description`, `New filename after edits`:
 
-- **Why do some files have no place name?**
-  The file has no GPS (location was off when it was shot). The app borrows from nearby photos that do have GPS, and leaves it blank if there are none nearby — that is missing data, not a bug.
+- Time, location and description are **editable in place**; the new filename below updates as you type.
+- An empty time means this row is not renamed.
+- The `↓` on a cell fills that value down through consecutive blanks (one fill per scene is enough).
+- `Find & replace…` swaps one wrong name that is scattered across many rows in one go.
+- `Blanks only` shows just the rows still missing something.
+- Page with `← Previous` / `Next →`; pick the page size under `Per page`.
+- Nothing on disk changes until you click `Apply renames`. `Don't rename, close` keeps everything as is — the draft is saved and reopening shows the same table.
 
-- **Place names are too coarse, only district level?**
-  That is what the offline database stores. For street level, turn on `Online precise location` and fill in an `Amap API key`.
+**Renamed by mistake?** Click `Undo last rename` at the bottom left of the review window; it restores this batch from the ledger (the ledger itself is untouched — only the filenames are swapped back). Note that the undo relies on that ledger: if you renamed these files by hand afterwards it cannot restore them, so keep a backup before large batches.
 
-- **It says "(time blank, not renamed)"?**
-  No capture time could be read from that file. Open `Review and rename…` and type one into the `Capture time` cell (for example `2025-10-11 14:30`) — it will then be renamed.
+## 6. Common questions
 
-- **It is slow.**
-  This version uses CPU. Speed depends on hardware, images and description length. Start with Q4 and a small batch. Disable photo descriptions, reduce frames, or turn off AI description for time/place-only naming. Stop finishes the current file and saves a partial plan; exiting requests an inference abort before releasing resources.
+- **Why does a file have no place name?**
+  The file carries no GPS (phone location was off when it was taken). The app borrows from a nearby photo with GPS by capture time; if there is none the field stays empty. That is missing data, not a bug.
 
-- **It says model files are incomplete.**
-  Select a directory containing the matching GGUF main model and mmproj. Ollama blob directories cannot be used directly. If duplicate model pairs exist, select their specific subdirectory. Model manager shows missing/duplicate file reasons.
+- **The place is too coarse — district only?**
+  The offline database stops at district/county level. For street level, turn on `Online precise location` in Setup and fill in the `Amap API key`.
+
+- **A status says "Click to add time"?**
+  No capture time could be read from that file. Click that cell to jump to the row in the review window and type the time yourself (e.g. `2025-10-11 14:30`); the row then takes part in renaming.
+
+- **A status says "Couldn't read it — click to see"?**
+  The model returned nothing usable (blurry picture, unreadable video, …). Clicking jumps to that row in the review window; you can also press `Retry` to run again, and if it still fails use `Copy log for the author`.
+
+- **Why is it slow?**
+  The current build runs on the CPU by default, and the time depends on your GPU, the pictures and the description length. With a GPU, installing the acceleration component in Setup helps a lot; you can also switch to `Quick rename` (time and place only) or untick `Write content description for photos` to describe videos only. Stopping a run keeps the partial plan after the current file; quitting aborts inference and releases the model safely.
+
+- **It says the model files are incomplete?**
+  Re-download from `Model manager…`, or point it at a folder that has both the GGUF main model and the matching projector file. An Ollama blobs directory cannot be used directly. If several models share a name, pick the exact model folder — the check list says what is missing or duplicated.
 
 - **Can it damage my originals?**
-  It only changes file names — no re-encoding, no compression, the picture is untouched. `Write file metadata` only **adds** description fields; your own captions, capture time, GPS and camera model are never deleted or changed.
+  Only filenames change — no re-encoding, no compression, the picture stays byte-for-byte the same. `Write metadata into files` only **adds** description fields; your own notes, capture time, GPS and camera model are never deleted or altered.
 
-- **I changed the language and nothing happened.**
-  Language takes effect after restarting the app.
+- **I changed the language but nothing happened.**
+  The language setting needs an app restart.
 
-- **Will running the same folder twice duplicate things?**
-  Already renamed files are skipped by default (tick `Re-process already renamed` to redo them). Metadata and `.ai.txt` overwrite the same spot, so nothing piles up.
+- **Running the same folder again — will it duplicate anything?**
+  Already-renamed files are skipped by default (tick `Reprocess already-renamed` to include them). Metadata and `.ai.txt` overwrite the same fields, so nothing piles up.
 
 ## 7. Privacy
 
-- Recognition and renaming happen entirely on your computer. Photos and videos do not leave the machine, and results are not uploaded.
-- `Online precise location` is **off** by default: while off, the app sends no network requests and all place names come from the built-in offline database.
-- With `Online precise location` on, only **latitude and longitude** are sent to the map provider to resolve an address — never the file itself.
-- There are no in-app model downloads in this version. Prepare local GGUF files first; recognition works offline with online precise location disabled.
+- Analysis and renaming happen entirely on your computer. Photos and videos never leave it, and results are never uploaded.
+- `Online precise location` is **off** by default: while off the app makes no network requests and all addresses come from the built-in offline database.
+- With it on, only the **coordinates** are sent to a map provider to get a more precise address — never the file itself.
+- Downloading a model is the only one-off network action (you can also drop GGUF files into `models` by hand). Once the model is there, turn online lookup off and the whole flow works offline.
 
 ## 8. About
 
-- 显影 SeeName
-- 看见，即命名。/ See it. Name it.
-- By tanhua
+Video probing and frame extraction run in-process through PyAV and need no separate FFmpeg executable. Writing video file metadata still requires the FFmpeg CLI; that part has not migrated yet (if it is missing from both the program folder and PATH, only that one option is unavailable — analysis and renaming are unaffected).
+
+- SeeName (显影)
+- See it. Name it. / 看见，即命名。
+- Author: tanhua
 - Version %VER%
-- Place data © OpenStreetMap contributors (ODbL) · world cities from GeoNames (CC-BY 4.0)
-- Online lookups: Amap (lbs.amap.com) in China · Nominatim / OpenStreetMap elsewhere
+- Place data © OpenStreetMap contributors (ODbL) · worldwide cities from GeoNames (CC-BY 4.0)
+- Online lookups: Amap Open Platform (lbs.amap.com) in China · Nominatim / OpenStreetMap elsewhere

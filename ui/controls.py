@@ -481,8 +481,13 @@ _GPU_TS = 0.0
 _GPU_TTL = 20.0     # nvidia-smi 最长会卡 8 秒，缓存一会儿；界面每 120ms 刷一次不能真去问
 
 
-def gpu_memory(ttl=_GPU_TTL) -> dict:
-    """Best-effort VRAM probe (nvidia-smi). 名称/总量缓存更久，空闲显存带 TTL。"""
+def gpu_memory(ttl=_GPU_TTL, timeout=8) -> dict:
+    """Best-effort VRAM probe (nvidia-smi). 名称/总量缓存更久，空闲显存带 TTL。
+
+    ``timeout`` 单独可调：界面轮询用默认 8 秒（驱动打嗝也不能让界面卡死），
+    首次启动判断「这台机器值不值得走智能命名」时传 2 秒——那是在启动路径上，
+    宁可判错成 CPU，也不能让人对着空窗口等 8 秒。
+    """
     global _GPU_TS
     import time
     now = time.time()
@@ -493,7 +498,7 @@ def gpu_memory(ttl=_GPU_TTL) -> dict:
         p = subprocess.run(
             ['nvidia-smi', '--query-gpu=name,memory.total,memory.free',
              '--format=csv,noheader,nounits'],
-            capture_output=True, creationflags=CRE, timeout=8)
+            capture_output=True, creationflags=CRE, timeout=timeout)
         line = (p.stdout or b'').decode('utf-8', 'replace').strip().splitlines()
         if line:
             parts = [x.strip() for x in line[0].split(',')]

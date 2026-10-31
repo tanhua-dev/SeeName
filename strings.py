@@ -124,8 +124,8 @@ EN.update({
         '=== Reference photos: scanned %d (cache hits %d), %d with GPS',
     '\n\n===== 启动 %s（端口 %d，模型库 %s）=====\n':
         '\n\n===== Starting %s (port %d, models dir %s) =====\n',
-    '\n\n改名后可以在主界面点「回滚本目录改名」还原。\n确定继续？':
-        '\n\nAfter renaming you can undo it with "Roll back renames" on the main window.\nContinue?',
+    '\n\n改完想还原：再打开这个窗口，点左下角「撤销上次改名」。\n确定继续？':
+        '\n\nTo undo later, reopen this window and click "Undo last rename" at the bottom left.\nContinue?',
     '\n%d 帧 / %s / 宫格 %d×%d / %d token':
         '\n%d frames / %s / grid %d×%d / %d tokens',
     '\n=== 改名 %d 个，跳过 %d 个（时间空白），失败 %d 个\n':
@@ -267,7 +267,7 @@ EN.update({
         '%d rows matched. Now fill in the replacement text.',
     '命中 %d 行：「%s」→「%s」': '%d rows matched: "%s" → "%s"',
     '回滚完成：%d 个文件已还原': 'Rollback done: %d files restored',
-    '回滚本目录改名': 'Roll back renames',
+    '撤销上次改名': 'Undo last rename',
     '固定抽帧数，0=按时长自适应':
         'Fixed frame count; 0 = adapt to duration',
     '地名': 'Location',
@@ -351,8 +351,8 @@ EN.update({
     '推荐': 'Recommended',
     '描述': 'Description',
     '改名中': 'Renaming',
-    '改名后想还原：主界面点「回滚本目录改名」。':
-        'To undo later: click "Roll back renames" on the main window.',
+    '改名后想还原：在核对窗口左下角点「撤销上次改名」。':
+        'To undo later: click "Undo last rename" at the bottom left of the review window.',
     '改名失败': 'Rename failed',
     '改名失败 %d 个（保持原名，改掉后可再试）':
         '%d renames failed (names unchanged; fix and retry)',
@@ -583,8 +583,8 @@ EN.update({
         '=== Filenames are unchanged yet. Review/edit time, location and description in the table, then click "Apply renames" when done.',
     '① 把这一格的%s填到下面连续的空白格（遇到有值就停，跨页有效）\n② 改过这一格后点它：把上下连续的同名格一起换成新值\n   （点位库用一个行政中心代表整片区域，边界上常常一整段都判错）':
         "① Fill this cell's %s down through consecutive blanks (stops at a filled cell, works across pages)\n② After editing a cell, click it: replaces the contiguous same-value cells above and below with the new value\n   (the location DB uses one admin centre as the point for a whole county, so long stretches near borders are often mislabeled)",
-    '将按表格里的内容改名 %d 个文件（其余 %d 个时间空白或无需改动的保持原名）。\n\n改名后可以在主界面点「回滚本目录改名」还原。\n确定继续？':
-        '%d files will be renamed per the table (the other %d keep their names: blank time or no change needed).\n\nAfter renaming you can undo it with "Roll back renames" on the main window.\nContinue?',
+    '将按表格里的内容改名 %d 个文件（其余 %d 个时间空白或无需改动的保持原名）。\n\n改完想还原：再打开这个窗口，点左下角「撤销上次改名」。\n确定继续？':
+        '%d files will be renamed per the table (the other %d keep their names: blank time or no change needed).\n\nTo undo later, reopen this window and click "Undo last rename" at the bottom left.\nContinue?',
     '想接着处理就点「核对并改名…」（只含已识别的部分），或改完参数再「▶ 重新开始识别」':
         'To continue, click "Review & rename…" (only analyzed items are included), or adjust the settings and click "▶ Restart analysis"',
     '把 %d 行的「%s」改成「%s」？\n\n（只改表格内容，文件名要等点「应用改名」才动）':
@@ -1005,7 +1005,6 @@ EN.update({
         'Save mode above is the master switch for these three; pick them individually here. '
         'Metadata goes inside the file itself (EXIF/XMP for photos, container tags for videos).',
     '关于': 'About',
-    '回滚本目录改名…': 'Roll back renames…',
     '时间留空的行不会被改名，原文件保持不动。':
         'Rows with an empty time are not renamed — those files stay untouched.',
     '第 3 步「核对并改名」可用/置灰切换 %s': 'step 3 enable/disable toggle %s',
@@ -1115,4 +1114,9 @@ EN.update({
     '关': 'Off',
     '    联网精确定位当前：%s（开关默认关闭，关闭时一个网络包都不发）':
         '    Online geocoding now: %s (off by default — no packets are sent while off)',
+    '模式': 'Mode',
+    '智能命名': 'Smart rename',
+    '秒改名': 'Quick rename',
+    '已为你选好': 'Picked for you',
+    '自定义': 'Custom',
 })

@@ -99,9 +99,11 @@ class PlanDialog(tk.Toplevel):
         ttk.Button(foot, text=T('查找替换…'), style='Sec.TButton', width=theme.button_width(12, 18),
                    command=self.open_replace).pack(side='left')
         if self.on_rollback is not None:
-            # 放左边、用次要样式：这是「撤回」动作，不能和主按钮抢位置
-            ttk.Button(foot, text=T('回滚本目录改名…'), style='Sec.TButton',
-                       width=theme.button_width(15, 18),
+            # 放左边、用次要样式：这是「撤回」动作，不能和主按钮抢位置。
+            # S-19：叫「撤销上次改名」——「回滚」是程序员的词，而且它撤的就是
+            # 这个目录最近一次改名（台账数据一条不少，只是把文件名换回去）。
+            ttk.Button(foot, text=T('撤销上次改名'), style='Sec.TButton',
+                       width=theme.button_width(12, 18),
                        command=self._rollback).pack(side='left', padx=(10, 0))
         tk.Label(foot, text=T('时间留空的行不会被改名，原文件保持不动。'),
                  bg=theme.C_BG, fg=theme.C_SUB, font=(theme.FONT, 9)).pack(side='left', padx=(12, 0))
@@ -482,7 +484,7 @@ class PlanDialog(tk.Toplevel):
             return
         if not messagebox.askyesno(
                 APP_TITLE,
-                T('将按表格里的内容改名 %d 个文件（其余 %d 个时间空白或无需改动的保持原名）。' + '\n\n改名后可以在主界面点「回滚本目录改名」还原。\n确定继续？')
+                T('将按表格里的内容改名 %d 个文件（其余 %d 个时间空白或无需改动的保持原名）。' + '\n\n改完想还原：再打开这个窗口，点左下角「撤销上次改名」。\n确定继续？')
                 % (len(ready), len(out) - len(ready)), parent=self):
             return
         try:

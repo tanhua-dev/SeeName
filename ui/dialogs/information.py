@@ -154,7 +154,11 @@ class HelpDialog(tk.Toplevel):
         wrap = tk.Frame(self, bg=theme.C_CARD, highlightbackground=theme.C_LINE,
                         highlightthickness=1)
         wrap.pack(fill='both', expand=True, padx=14)
-        txt = tk.Text(wrap, wrap='word', bg=theme.C_CARD, fg=theme.C_TEXT, bd=0,
+        # wrap='char' 不是随手选的：帮助文档几乎全是中文，没有空格可断，
+        # 'word' 模式只能在少数几个拉丁词之间的空格处折行，结果一句中文被
+        # 硬生生切成「……GPS / 位置（都在……」，右边还留一大块空白。
+        # 按字符折行后行宽才均匀；英文偶尔会在词中间断开，比整段错位好接受。
+        txt = tk.Text(wrap, wrap='char', bg=theme.C_CARD, fg=theme.C_TEXT, bd=0,
                       highlightthickness=0, padx=18, pady=14,
                       cursor='arrow', relief='flat')
         vs = ttk.Scrollbar(wrap, orient='vertical', command=txt.yview)
