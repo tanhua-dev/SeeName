@@ -19,7 +19,7 @@ from strings import T
 from core.features import metadata_writing_enabled
 from .. import theme
 from ..common import APP_TITLE
-from ..controls import CheckRow, ChoiceRow, ScrollArea, fit_to_content, work_area
+from ..controls import ChoiceRow, ScrollArea, SwitchRow, fit_to_content, work_area
 from .acceleration import AccelerationPanel
 
 
@@ -191,7 +191,7 @@ class SettingsDialog(tk.Toplevel):
             except Exception:
                 pass
 
-        app.cb_ai_desc = CheckRow(card, T('AI描述'), app.var_ai_desc,
+        app.cb_ai_desc = SwitchRow(card, T('AI描述'), app.var_ai_desc,
                                   command=lambda: (app._on_ai_desc(), scope_changed()),
                                   bg=theme.C_CARD)
         app.cb_ai_desc.pack(fill='x')
@@ -200,14 +200,14 @@ class SettingsDialog(tk.Toplevel):
 
         row = tk.Frame(card, bg=theme.C_CARD)
         row.pack(fill='x')
-        app.cb_video = CheckRow(row, T('视频'), app.var_video,
+        app.cb_video = SwitchRow(row, T('视频'), app.var_video,
                                 command=scope_changed, bg=theme.C_CARD)
         app.cb_video.pack(side='left')
-        app.cb_photos = CheckRow(row, T('照片'), app.var_photos,
+        app.cb_photos = SwitchRow(row, T('照片'), app.var_photos,
                                  command=scope_changed, bg=theme.C_CARD)
         app.cb_photos.pack(side='left', padx=(20, 0))
 
-        app.cb_desc_photo = CheckRow(card, T('照片也写内容描述'), app.var_desc_photo,
+        app.cb_desc_photo = SwitchRow(card, T('照片也写内容描述'), app.var_desc_photo,
                                      command=scope_changed, bg=theme.C_CARD)
         app.cb_desc_photo.pack(fill='x', pady=(theme.S2, 0))
         self.lbl_scope = self._hint(card, '')
@@ -422,7 +422,7 @@ class SettingsDialog(tk.Toplevel):
                                   textvariable=app.var_limit)
         app.sp_limit.pack(side='right')
 
-        self.check_all = CheckRow(card, T('重新处理已改过名的'),
+        self.check_all = SwitchRow(card, T('重新处理已改过名的'),
                                   app.var_all, bg=theme.C_CARD)
         self.check_all.pack(fill='x', pady=(theme.S2, 0))
         self._hint(card, T('不勾选时，名字已经是「视/图 + 日期」格式的文件会跳过。')).pack(
@@ -432,7 +432,7 @@ class SettingsDialog(tk.Toplevel):
     def _build_geo(self, body):
         card = self._card(body, T('地名与定位'))
         app = self.app
-        self.check_netgeo = CheckRow(card, T('联网精确定位'), app.var_netgeo,
+        self.check_netgeo = SwitchRow(card, T('联网精确定位'), app.var_netgeo,
                                      command=app._on_netgeo, bg=theme.C_CARD)
         self.check_netgeo.pack(fill='x')
         self.lbl_netgeo = self._hint(
@@ -459,18 +459,18 @@ class SettingsDialog(tk.Toplevel):
     def _build_output(self, body):
         card = self._card(body, T('识别结果怎么保存（细项）'))
         app = self.app
-        self.check_meta = CheckRow(card, T('写入文件元数据'), app.var_meta,
+        self.check_meta = SwitchRow(card, T('写入文件元数据'), app.var_meta,
                                    command=lambda: app._save_sw('write_meta', app.var_meta),
                                    bg=theme.C_CARD)
         self.check_meta.pack(fill='x')
         if not metadata_writing_enabled():
             app.var_meta.set(False)
             self.check_meta.set_enabled(False)
-        self.check_txt = CheckRow(card, T('生成 .ai.txt 摘要'), app.var_txt,
+        self.check_txt = SwitchRow(card, T('生成 .ai.txt 摘要'), app.var_txt,
                                   command=lambda: app._save_sw('write_txt', app.var_txt),
                                   bg=theme.C_CARD)
         self.check_txt.pack(fill='x', pady=(theme.S1, 0))
-        self.check_md = CheckRow(card, T('生成 目录说明.md'), app.var_md,
+        self.check_md = SwitchRow(card, T('生成 目录说明.md'), app.var_md,
                                  command=lambda: app._save_sw('write_md', app.var_md),
                                  bg=theme.C_CARD)
         self.check_md.pack(fill='x', pady=(theme.S1, 0))
