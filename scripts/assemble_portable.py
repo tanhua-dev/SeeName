@@ -16,17 +16,11 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-
-SEVENZIP_CANDIDATES = (
-    r'C:\Program Files\7-Zip\7z.exe',
-    r'C:\Program Files (x86)\7-Zip\7z.exe',
-)
 
 
 def digest(path: Path) -> str:
@@ -35,14 +29,6 @@ def digest(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b''):
             sha.update(chunk)
     return sha.hexdigest()
-
-
-def find_7z() -> str:
-    for candidate in SEVENZIP_CANDIDATES:
-        if Path(candidate).is_file():
-            return candidate
-    found = shutil.which('7z') or shutil.which('7za')
-    return found or ''
 
 
 def read_catalog(app_dir: Path, backend: str) -> dict:
@@ -156,16 +142,12 @@ def readme_text(flavor: str, backend: str, version: str, models: list) -> str:
 
 
 def compress(folder: Path, archive_base: Path) -> Path:
-    """返回真正写出来的压缩包路径。"""
-    seven = find_7z()
-    if seven:
-        print('用 7-Zip 压缩：%s' % seven, flush=True)
-        archive = Path(str(archive_base) + '.7z')
-        subprocess.run([seven, 'a', '-t7z', '-mx=5', '-mmt=on', '-bso0', '-bsp0',
-                        str(archive), folder.name],
-                       cwd=str(folder.parent), check=True)
-        return archive
-    print('没找到 7-Zip，退回 zip', flush=True)
+    """打成单个 zip，返回实际路径。
+
+    用 zip 不用 7z：包内容主要是量化过的 GGUF 和 CUDA/Vulkan 的 DLL，本身压不动
+    多少（实测两格式体积差 <3%），而 zip 任何 Windows 双击就能解，不用先逼用户
+    装一个 7-Zip。单文件不切分卷——少一个分卷就是「解压失败」，普通人查不出来。
+    """
     archive = Path(str(archive_base) + '.zip')
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=6,
                          allowZip64=True) as package:
@@ -181,7 +163,7 @@ def main():
                         help='已通过 build_windows.py 验收的 SeeName 应用目录')
     parser.add_argument('--version', required=True, help='例如 v2.0.0')
     parser.add_argument('--flavor', required=True,
-                        help='包名后缀，例如 vulkan-免模型 / cuda-含模型')
+                        help='包名后缀，只该用这两个：vulkan / cuda-full')
     parser.add_argument('--backend', choices=('none', 'vulkan', 'cuda'), default='none')
     parser.add_argument('--component-dir', type=Path,
                         help='backends/ 下那一份组件目录，目录名必须与 catalog 的 id 一致')
@@ -197,7 +179,7 @@ def main():
         if not (app / required).exists():
             raise SystemExit('应用目录不完整，缺少 %s：%s' % (required, app))
 
-    name = '显影SeeName_%s_%s' % (args.version, args.flavor)
+    name = 'SeeName-%s-%s' % (args.version, args.flavor)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     staging = output / name

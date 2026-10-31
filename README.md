@@ -28,24 +28,28 @@ all live side by side, so moving the folder keeps everything working.
 
 发行两个包 / two editions:
 
-| 版本 Edition | 内含 Contents | 大小 Size | 适用 Who |
-|---|---|---|---|
-| Vulkan 版（不含模型） | 程序 + Vulkan 加速组件 | 约 220 MB | 显卡型号不确定、想自己选模型 |
-| CUDA 版（含模型） | 程序 + CUDA 加速组件 + 4B Q4 模型 | 约 4.1 GB | NVIDIA 显卡，解压即用 |
+| 版本 Edition | 文件名 File | 内含 Contents | 大小 Size | 适用 Who |
+|---|---|---|---|---|
+| Vulkan 版（不含模型） | `SeeName-v2.0.0-vulkan.zip` | 程序 + Vulkan 加速组件 | 约 260 MB | 显卡型号不确定、想自己选模型 |
+| CUDA 版（含模型） | `SeeName-v2.0.0-cuda-full.zip` | 程序 + CUDA 加速组件 + 4B Q4 模型 | 约 4.1 GB | NVIDIA 显卡，解压即用 |
 
 两个包都是解压即用，都不需要另外安装 Python、Ollama 或 FFmpeg。
+用 zip 而不是 7z：Windows 双击就能解，不用先装解压工具；包内是量化 GGUF 和 DLL，
+换 7z 也只能省 1～3%，不值得让用户多一道门槛。单文件不分卷，附同名 `.sha256` 校验。
 
 本地怎么组装 / how the bundles are assembled:
 
 ```sh
 # 先由 CI 或本机 build_windows.py 产出通过验收的应用目录，再拼装
 python -B scripts/assemble_portable.py --app-dir build/windows/<id>/dist/SeeName \
-    --version v2.0.0 --flavor vulkan-免模型 --backend vulkan \
+    --version v2.0.0 --flavor vulkan --backend vulkan \
     --component-dir backends/vulkan-<id> --output dist/bundles
 python -B scripts/assemble_portable.py --app-dir build/windows/<id>/dist/SeeName \
-    --version v2.0.0 --flavor cuda-含模型 --backend cuda \
+    --version v2.0.0 --flavor cuda-full --backend cuda \
     --component-dir backends/cuda-<id> --models-dir models --output dist/bundles
 ```
+
+产出 `SeeName-v2.0.0-vulkan.zip`、`SeeName-v2.0.0-cuda-full.zip` 和各自的 `.sha256`。
 
 组装时会按应用内置的可信清单逐个核对组件的文件名、大小和 SHA-256，对不上直接拒绝，
 不会等到用户解压之后才在界面上说"加速用不了"。
