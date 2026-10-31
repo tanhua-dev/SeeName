@@ -451,6 +451,10 @@ class App:
                                  fg=theme.C_ACCENT, font=(theme.FONT, 9, 'bold'),
                                  anchor='w')
         self.lbl_prog.pack(fill='x', pady=(3, 0))
+        # 容器高度取「按钮」和「进度条那套」里更高的那个。写死 42 会把主按钮
+        # 的字上下各裁掉一点（高 DPI / 大字号下 ttk 按钮要 45，进度条那套要 53）。
+        # 建窗时两个 reqheight 还是 1，得等界面排完版再量，所以推迟到 idle。
+        self.root.after_idle(self._fit_go_slot)
 
         self.btn_plan = ttk.Button(r2, text=T('核对并改名…'), style='Sec.TButton',
                                    command=self.open_plan, state='disabled',
@@ -465,6 +469,21 @@ class App:
         self.lbl_avg = tk.Label(r2, text='', bg=theme.C_CARD, fg=theme.C_SUB,
                                 font=(theme.FONT, 9), anchor='e', justify='right')
         self.lbl_avg.pack(side='right')
+
+    def _fit_go_slot(self):
+        """让第 2 步那个定高容器装得下「按钮」和「进度条那套」里更高的一个。
+
+        写死 42 时，高 DPI / 大字号下 ttk 按钮要 45、进度条那套要 53，
+        两套都会上下各被裁掉一点（主按钮的字看着像被切了一半）。
+        建窗时两个 reqheight 还是 1，所以等界面排完版量一次就够。
+        """
+        try:
+            want = max(42, self.btn_go.winfo_reqheight(),
+                       self.go_bar.winfo_reqheight())
+            if int(self.go_slot.cget('height')) != want:
+                self.go_slot.configure(height=want)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 结果表
     def _build_table(self, parent):
