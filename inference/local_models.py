@@ -182,8 +182,11 @@ class LocalModelStore:
             return download_pair(name, self.directory(), self.source(), on_progress, should_stop)
 
     def source(self) -> str:
-        source = self.config().get('gguf_download_source', 'huggingface')
-        return source if source in ('huggingface', 'modelscope') else 'huggingface'
+        # 默认走 ModelScope：国内家宽直连就能下，Hugging Face 在大陆多数网络下
+        # 连不上，而失败提示只是一串 urlopen 错误，小白根本不知道该去底部换源。
+        # 已经手动选过并下过一次的，config 里存着他自己的选择，不受影响。
+        source = self.config().get('gguf_download_source', 'modelscope')
+        return source if source in ('huggingface', 'modelscope') else 'modelscope'
 
     def set_source(self, url: str) -> str:
         if url not in ('huggingface', 'modelscope'):

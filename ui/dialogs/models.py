@@ -27,8 +27,10 @@ from ..controls import ChoiceRow, ScrollArea, fit_to_content
 from ..download_task import (DONE, FAILED, IDLE, PAUSED, RUNNING, DownloadTask,
                              TaskCard, progress_metrics, state_badge)
 
-SOURCE_OPTIONS = ((T('国外：Hugging Face'), 'huggingface'),
-                  (T('国内：ModelScope'), 'modelscope'))
+# 国内源放第一个：默认值是 modelscope（见 LocalModelStore.source()），
+# 把同一项摆在最前面，下拉的默认选中和实际用的源在视觉上就是同一个。
+SOURCE_OPTIONS = ((T('国内：ModelScope'), 'modelscope'),
+                  (T('国外：Hugging Face'), 'huggingface'))
 
 
 class ModelDialog(tk.Toplevel):
