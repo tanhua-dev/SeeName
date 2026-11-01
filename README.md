@@ -18,6 +18,8 @@ AI that truly *sees* your photos and videos and renames them by what's actually 
 
 作者 / By tanhua
 
+**下载 / Download**：两个包都在 [SeeName v2.0.0 Release](https://github.com/tanhua-dev/SeeName/releases/tag/v2.0.0) —— Vulkan 版（84 MB，不含模型）直接下 GitHub 附件；含模型的完整版 3.36 GB 超出附件单文件上限，走百度网盘，链接和提取码就在该 Release 说明的第一段。
+
 ## v2.0 便携发行版 / Portable builds
 
 v2.0 起不再依赖 Ollama：推理由 Python 绑定在进程内调用 llama.cpp，模型是本地 GGUF，
@@ -28,14 +30,15 @@ all live side by side, so moving the folder keeps everything working.
 
 发行两个包 / two editions:
 
-| 版本 Edition | 文件名 File | 内含 Contents | 大小 Size | 适用 Who |
+| 版本 Edition | 文件名 File | 内含 Contents | 下载 Download | 获取 Get it |
 |---|---|---|---|---|
-| Vulkan 版（不含模型） | `SeeName-v2.0.0-vulkan.zip` | 程序 + Vulkan 加速组件 | 约 260 MB | 显卡型号不确定、想自己选模型 |
-| CUDA 版（含模型） | `SeeName-v2.0.0-cuda-full.zip` | 程序 + CUDA 加速组件 + 4B Q4 模型 | 约 4.1 GB | NVIDIA 显卡，解压即用 |
+| Vulkan 版（不含模型；显卡型号不确定、想自己选模型也能用） | `SeeName-v2.0.0-vulkan.zip` | 程序 + Vulkan 加速组件 | 84 MB | [GitHub 附件](https://github.com/tanhua-dev/SeeName/releases/download/v2.0.0/SeeName-v2.0.0-vulkan.zip) ／ 百度网盘（见 Release 说明） |
+| CUDA 版（含模型；需 NVIDIA 显卡，解压即用） | `SeeName-v2.0.0-cuda-full.zip` | 程序 + CUDA 加速组件 + 4B Q4 模型 | 3.36 GB | 百度网盘（见 Release 说明） |
 
 两个包都是解压即用，都不需要另外安装 Python、Ollama 或 FFmpeg。
 用 zip 而不是 7z：Windows 双击就能解，不用先装解压工具；包内是量化 GGUF 和 DLL，
 换 7z 也只能省 1～3%，不值得让用户多一道门槛。单文件不分卷，附同名 `.sha256` 校验。
+解压后占用比下载体积大得多：完整版解压后 3.99 GB、1167 个文件，盘上要留够空间。
 
 本地怎么组装 / how the bundles are assembled:
 
