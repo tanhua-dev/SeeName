@@ -16,4 +16,13 @@ VID_EXT = ('.mp4', '.mov', '.mkv', '.avi', '.m4v', '.3gp', '.wmv')
 ALREADY_NAMED = re.compile(r'^(\d{8}_\d{4}(_|\.)|[视图]\d{8})')
 # The open-source build carries no private directory presets.
 PRESETS = {}
+
+# 首页「模式」二选一（S-18）。两者差在一件事上：要不要调模型。
+#   smart = 智能命名：抽帧 + 调模型写描述（照片也写），默认
+#   quick = 秒改名：完全不碰模型，只读拍摄时间和 GPS，秒级完成
+# 模型不在预设里——用户自己选的模型不该被一个模式按钮悄悄改掉。
+MODES = {
+    'smart': {'ai_desc': True, 'desc_photo': True},
+    'quick': {'ai_desc': False, 'desc_photo': False},
+}
 PHOTO_EXT = ('.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.dng', '.tif', '.tiff')

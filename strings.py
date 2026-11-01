@@ -124,8 +124,8 @@ EN.update({
         '=== Reference photos: scanned %d (cache hits %d), %d with GPS',
     '\n\n===== 启动 %s（端口 %d，模型库 %s）=====\n':
         '\n\n===== Starting %s (port %d, models dir %s) =====\n',
-    '\n\n改名后可以在主界面点「回滚本目录改名」还原。\n确定继续？':
-        '\n\nAfter renaming you can undo it with "Roll back renames" on the main window.\nContinue?',
+    '\n\n改完想还原：再打开这个窗口，点左下角「撤销上次改名」。\n确定继续？':
+        '\n\nTo undo later, reopen this window and click "Undo last rename" at the bottom left.\nContinue?',
     '\n%d 帧 / %s / 宫格 %d×%d / %d token':
         '\n%d frames / %s / grid %d×%d / %d tokens',
     '\n=== 改名 %d 个，跳过 %d 个（时间空白），失败 %d 个\n':
@@ -267,7 +267,7 @@ EN.update({
         '%d rows matched. Now fill in the replacement text.',
     '命中 %d 行：「%s」→「%s」': '%d rows matched: "%s" → "%s"',
     '回滚完成：%d 个文件已还原': 'Rollback done: %d files restored',
-    '回滚本目录改名': 'Roll back renames',
+    '撤销上次改名': 'Undo last rename',
     '固定抽帧数，0=按时长自适应':
         'Fixed frame count; 0 = adapt to duration',
     '地名': 'Location',
@@ -351,8 +351,8 @@ EN.update({
     '推荐': 'Recommended',
     '描述': 'Description',
     '改名中': 'Renaming',
-    '改名后想还原：主界面点「回滚本目录改名」。':
-        'To undo later: click "Roll back renames" on the main window.',
+    '改名后想还原：在核对窗口左下角点「撤销上次改名」。':
+        'To undo later: click "Undo last rename" at the bottom left of the review window.',
     '改名失败': 'Rename failed',
     '改名失败 %d 个（保持原名，改掉后可再试）':
         '%d renames failed (names unchanged; fix and retry)',
@@ -463,12 +463,13 @@ EN.update({
     '照片/视频 AI 改名引擎（无界面）':
         'Photo/video AI renamer engine (no GUI)',
     '照片也写内容描述': 'Describe photos too',
-    '照片也调模型写描述（每张约 11 秒，很慢）':
-        'Also run the model to describe photos (~11s each, slow)',
-    '照片：写内容描述，约 11 秒/张':
-        'Photos: described by the model, ~11s each',
     '照片：只读拍摄时间和 GPS，秒级':
         'Photos: only EXIF time & GPS, seconds',
+    # S-14：「约 11 秒」是写死的，换台机器就是错的（1660Ti 上 Vulkan 5.3s、
+    # CUDA 10s、纯 CPU 一分钟以上）。只说"看机器"，不承诺秒数。
+    '速度看机器：有显卡十几秒一张，纯 CPU 会慢不少':
+        'Speed depends on your machine: seconds per item with a GPU, '
+        'much slower on CPU only',
     '状态': 'Status',
     '状态：%s': 'Status: %s',
     '现在打开「模型管理」下载它吗？\n（模型文件约 3–8 GB，只下载一次）':
@@ -520,8 +521,6 @@ EN.update({
     '视频 %d 个': '%d videos',
     '视频或照片': 'Videos or photos',
     '视频改名助手': 'Video renamer',
-    '视频：抽帧送模型，约 11 秒/条':
-        'Videos: frames sent to the model, ~11s each',
     '计划表：%s': 'Plan: %s',
     '识别中 %d/%d': 'Analyzing %d/%d',
     '识别中…': 'Analyzing…',
@@ -573,8 +572,6 @@ EN.update({
     '（没有可预览的画面）': '(no preview available)',
     '（照片识别失败：%r）': '(photo analysis failed: %r)',
     '（空）': '(blank)',
-    '；已开启「照片也写描述」，每张约 11 秒':
-        '; photo descriptions enabled, ~11s each',
 })
 
 # ---------------------------------------------------------------- 组合 key
@@ -586,8 +583,8 @@ EN.update({
         '=== Filenames are unchanged yet. Review/edit time, location and description in the table, then click "Apply renames" when done.',
     '① 把这一格的%s填到下面连续的空白格（遇到有值就停，跨页有效）\n② 改过这一格后点它：把上下连续的同名格一起换成新值\n   （点位库用一个行政中心代表整片区域，边界上常常一整段都判错）':
         "① Fill this cell's %s down through consecutive blanks (stops at a filled cell, works across pages)\n② After editing a cell, click it: replaces the contiguous same-value cells above and below with the new value\n   (the location DB uses one admin centre as the point for a whole county, so long stretches near borders are often mislabeled)",
-    '将按表格里的内容改名 %d 个文件（其余 %d 个时间空白或无需改动的保持原名）。\n\n改名后可以在主界面点「回滚本目录改名」还原。\n确定继续？':
-        '%d files will be renamed per the table (the other %d keep their names: blank time or no change needed).\n\nAfter renaming you can undo it with "Roll back renames" on the main window.\nContinue?',
+    '将按表格里的内容改名 %d 个文件（其余 %d 个时间空白或无需改动的保持原名）。\n\n改完想还原：再打开这个窗口，点左下角「撤销上次改名」。\n确定继续？':
+        '%d files will be renamed per the table (the other %d keep their names: blank time or no change needed).\n\nTo undo later, reopen this window and click "Undo last rename" at the bottom left.\nContinue?',
     '想接着处理就点「核对并改名…」（只含已识别的部分），或改完参数再「▶ 重新开始识别」':
         'To continue, click "Review & rename…" (only analyzed items are included), or adjust the settings and click "▶ Restart analysis"',
     '把 %d 行的「%s」改成「%s」？\n\n（只改表格内容，文件名要等点「应用改名」才动）':
@@ -614,6 +611,13 @@ EN.update({
         'This directory has no rename records yet.\nThe ledger is created after you click "Apply renames" in the review window.',
     '地名数据 © OpenStreetMap 贡献者（ODbL）· 全球城市 GeoNames（CC-BY 4.0）':
         'Place data (c) OpenStreetMap contributors (ODbL) - worldwide cities from GeoNames (CC-BY 4.0)',
+    '地名数据 © OpenStreetMap · GeoNames':
+        'Place data (c) OpenStreetMap - GeoNames',
+    # ↓ v2.0 首次运行按硬件自动启用加速
+    '检测到已装好的 %s 组件，已自动启用显卡加速':
+        'Found an installed %s component - GPU acceleration enabled',
+    '本地推理库已就绪 · %s':
+        'Local inference ready - %s',
 })
 
 EN.update({
@@ -884,4 +888,303 @@ EN.update({
 EN.update({
     '2B 和 4B 均可下载 Q4 / Q8 主模型，共用各自的 Q8 视觉投影。可在“GPU 加速”中配置设备。':
         'Both 2B and 4B offer Q4 / Q8 models with matching Q8 projectors. Configure devices under GPU acceleration.',
+})
+
+# ---- 下载状态机与进度文案（模型列表 / GPU 组件共用同一套）----
+# 两个下载入口以前各写一套说法：「取消」在一处报红字、在另一处叫「已暂停」，
+# 同一个动作有三种叫法。这里统一成 下载 / 暂停 / 继续 / 重试 / 使用 五个动词。
+EN.update({
+    '暂停': 'Pause',
+    '继续': 'Resume',
+    '重试': 'Retry',
+    '查看': 'Open',
+    '继续下载': 'Resume download',
+    '下载并启用': 'Download and enable',
+    '已启用': 'Enabled',
+    '已暂停': 'Paused',
+    '已完成': 'Done',
+    '失败': 'Failed',
+    '校验中': 'Verifying',
+    '可继续': 'Resumable',
+    '组件版本': 'Component version',
+    '未知原因': 'unknown reason',
+    '下载中 %d%%': 'Downloading %d%%',
+    '失败：%s': 'Failed: %s',
+    '已下载 %s / %s': 'Downloaded %s / %s',
+    '剩余 %s': '%s left',
+    '已下载 %s / %s · 进度已保留': 'Downloaded %s / %s · progress kept',
+    '已下载 %s / %s，点「继续」接着下': 'Downloaded %s / %s — press Resume to continue',
+    '正在校验文件完整性，这一步进度不动是正常的':
+        'Verifying file integrity — the bar staying still here is expected',
+    '已暂停，进度已保留；点「继续」接着下。':
+        'Paused. The partial file is kept — press Resume to continue.',
+    '已安装 · 占用 %s': 'Installed · %s on disk',
+    '没下完 · 已有 %s / %s（%d%%）': 'Incomplete · %s of %s already on disk (%d%%)',
+    '没下完 · 已有 %s / %s': 'Incomplete · %s of %s already on disk',
+    '可下载 · %s': 'Available · %s',
+    '有别的下载正在进行，等它结束再试。':
+        'Another download is running — try again once it finishes.',
+    '正在暂停 %s…': 'Pausing %s…',
+    '正在停止下载…': 'Stopping the download…',
+    '正在下载 %s 组件…': 'Downloading the %s component…',
+    '正在暂停 %s 组件的下载…': 'Pausing the %s component download…',
+    '正在启用 %s…': 'Enabling %s…',
+    '正在切换到 CPU…': 'Switching to CPU…',
+    '当前设备：%s': 'Current device: %s',
+    '没有可用的 %s 组件版本。': 'No usable %s component version.',
+    '无法启动本地推理服务': 'Could not start the local inference service',
+    '%s 组件已就绪。': 'The %s component is ready.',
+    '%s 已启用。': '%s enabled.',
+    '%s 已启用 · 识别时会自动加载显卡。':
+        '%s enabled · the GPU loads automatically when recognition starts.',
+    '%s 组件已准备好，重启 SeeName 后生效。':
+        'The %s component is ready and takes effect after restarting SeeName.',
+    '已启用 · 识别时会自动加载这块显卡':
+        'Enabled · this GPU loads automatically when recognition starts',
+    '已安装，还没启用 · 点右边的按钮启用':
+        'Installed but not enabled — use the button on the right',
+    '未安装 · 需要下载 %s': 'Not installed · %s to download',
+    '上次加载失败：%s': 'Last load failed: %s',
+    '继续下载 %s 加速组件？\n已下载 %s / %s，会从这里接着下。':
+        'Resume the %s component download?\n%s of %s already on disk; it continues from there.',
+    '下载 %s 加速组件（%s）并启用？':
+        'Download and enable the %s acceleration component (%s)?',
+    '继续下载 %s？\n已下载 %s / %s，会从这里接着下。\n\n保存到：\n%s':
+        'Resume downloading %s?\n%s of %s already on disk; it continues from there.\n\nSaved to:/n%s',
+    '下载 %s（%s）到：\n%s\n\n下载中可以随时暂停，之后点「继续」会接着下。':
+        'Download %s (%s) to:/n%s/n/nYou can pause at any time; pressing Resume later continues from there.',
+    '下载完成，点这一行的「使用」即可切换到它。':
+        'Download complete — press Use on this row to switch to it.',
+    '模型下载结束：%s': 'Model download finished: %s',
+    '模型库切换失败': 'Could not switch the model library',
+    '未检测到 NVIDIA 显卡 · 建议用 Vulkan（兼容 Intel / AMD）或 CPU':
+        'No NVIDIA GPU found · use Vulkan (Intel / AMD compatible) or CPU',
+    '%s · 可用显存 %.1f / %.1f GB': '%s · %.1f / %.1f GB VRAM free',
+    ' · CUDA 可用': ' · CUDA usable',
+    ' · 偏紧，4B 模型建议用 Vulkan（或先关掉占显存的程序）':
+        ' · tight; use Vulkan for the 4B model (or close VRAM-heavy apps first)',
+    ' · 不足，建议用 Vulkan': ' · too little; use Vulkan',
+})
+
+
+# ---- 三步主界面 / 设置两段式（⋯更多 拆掉之后的文案）----
+EN.update({
+    '文件夹': 'Folder',
+    '核对并改名…': 'Review and rename…',
+    '无预览': 'No preview',
+    '打开目录': 'Open folder',
+    '识别报告': 'Report',
+    '改名台账': 'Rename ledger',
+    '点表格里的一行，这里显示它的原名和新名':
+        'Click a row — its original and new name show up here',
+    '选中后这里显示地名、耗时和失败原因':
+        'Place, elapsed time and the failure reason appear here',
+    '（时间空白，不改名）': '(no time — left as is)',
+    '失败：%s': 'Failed: %s',
+    '%d 帧 / %d token': '%d frames / %d tokens',
+    '上次识别留下的，没有更多细节）': 'from the last run, no further detail)',
+    '设置 · %s': 'Settings · %s',
+    '常用': 'Common',
+    '上面三项改完就够用；技术项都在「高级」里，不看也不影响。':
+        'The three groups above cover everyday use; technical options live under Advanced.',
+    '保存方式': 'Save mode',
+    '结果怎么留': 'What to keep',
+    '简洁': 'Simple',
+    '详细': 'Detailed',
+    '只改文件名，不多出一个文件。想留说明书再切到「详细」。':
+        'Renames only — no extra files. Switch to Detailed if you want the notes.',
+    '改名，并留下 .ai.txt 摘要和「目录说明.md」，照片/视频还会写入元数据。':
+        'Renames and keeps a .ai.txt summary plus folder-notes.md; photos and videos also get metadata.',
+    '▸ 高级设置': '▸ Advanced settings',
+    '▾ 高级设置': '▾ Advanced settings',
+    '抽帧数 · 定位 · 元数据 · GPU 加速 · 语言':
+        'frame count · location · metadata · GPU · language',
+    '识别结果怎么保存（细项）': 'How results are saved (details)',
+    '上面「保存方式」就是这三项的总开关；这里可以单独挑。'
+    '元数据写进文件本身（照片 EXIF/XMP、视频容器标签），拷到哪都带着走。':
+        'Save mode above is the master switch for these three; pick them individually here. '
+        'Metadata goes inside the file itself (EXIF/XMP for photos, container tags for videos).',
+    '关于': 'About',
+    '时间留空的行不会被改名，原文件保持不动。':
+        'Rows with an empty time are not renamed — those files stay untouched.',
+    '第 3 步「核对并改名」可用/置灰切换 %s': 'step 3 enable/disable toggle %s',
+    '选中详情条首行 = %r': 'detail strip first line = %r',
+    '⋯更多菜单与右侧栏已移除，入口改为第 3 步 + 表格标题行':
+        'the More menu and the sidebar are gone — entry points are step 3 and the table header',
+})
+
+# ---------------------------------------------------------------- 小白版界面（B2/B3/B4）
+# 主界面两步化、表格四列、设置窗重排之后新增的文案，连同之前几轮漏翻的
+# 设置项标签一并补齐。刻意**没有**翻译的三类，见文件头说明：提示词、
+# DESC_BAD 里的判定词、自检用的示例数据。
+EN.update({
+    '● 就绪': '● Ready',
+    '● 正在识别…': '● Analyzing…',
+    '● 正在识别 %d/%d': '● Analyzing %d/%d',
+    '● 已停止 · %d/%d': '● Stopped · %d/%d',
+    '三步就能改好名字': 'Rename in three steps',
+    '选文件夹': 'Pick a folder',
+    '点那个大按钮，选一个装着照片或视频的文件夹。':
+        'Click the big button and pick a folder with photos or videos.',
+    '点开始识别': 'Click Start',
+    '模型自己看画面，给每个文件起名字。第一次会慢一些。':
+        'The model looks at the picture and names each file. The first run is slower.',
+    '核对并改名': 'Review & rename',
+    '确认没问题就点应用；想改哪一行，直接点格子改。':
+        'Click Apply when it looks right; to fix a row, just click its cell.',
+    '不再显示': "Don't show again",
+    '知道了': 'Got it',
+    '选好文件夹，点「开始识别」，剩下的交给我':
+        'Pick a folder, click Start — I will take it from there',
+    '📁 选择照片文件夹': '📁 Choose photo folder',
+    '📁 %s · %d 张': '📁 %s · %d items',
+    '📁 %s · 空文件夹': '📁 %s · empty folder',
+    '这个文件夹里没有照片或视频': 'No photos or videos in this folder',
+    '视频：抽帧交给模型看': 'Videos: frames sent to the model',
+    '照片：模型写内容描述': 'Photos: model writes a description',
+    '平均约 %.1f 秒/张，还剩约 %s': 'avg %.1fs per item, about %s left',
+    '已用 %s': '%s elapsed',
+    '✓ 已改名': '✓ Renamed',
+    '没认出来，点我看看': "Couldn't read it — click to see",
+    '改名失败，点我看看': 'Rename failed — click to see',
+    '点我补时间': 'Click to add time',
+    '这一行没有更多细节（可能是上次识别留下的）':
+        'No further detail for this row (it may be left over from an earlier run)',
+    '识别完成后点亮': 'Unlocks when analysis finishes',
+    '有 %d 张没认出来，已跳过': '%d items could not be read and were skipped',
+    '这些文件保持原名不动。可以先「重试」，还不行就把日志复制给作者。':
+        'These files keep their names. Try "Retry" first; if it still fails, '
+        'copy the log for the author.',
+    '复制日志发给作者': 'Copy log for the author',
+    '日志已复制，粘贴给作者就行': 'Log copied — just paste it to the author',
+    '%d 张，%d 张待改名，%d 张不用改': '%d items, %d to rename, %d unchanged',
+    '，%d 张没认出来': ', %d could not be read',
+    '查看详细报告': 'View full report',
+    '描述：%s': 'Description: %s',
+    '处理范围': 'Scope',
+    '关掉就不调用模型，只按拍摄时间和 GPS 命名，秒级完成。':
+        'Off = no model call; names come from capture time and GPS, done in seconds.',
+    '当前模型': 'Current model',
+    '模型分两部分，放在同一个文件夹就行，点「模型管理」会自动配好。':
+        'The model comes in two parts — just keep them in one folder; '
+        'the model manager sets it up for you.',
+    '加速方式': 'Acceleration',
+    '换一种': 'Change',
+    '用哪个': 'Which one',
+    '只用 CPU': 'CPU only',
+    '检测到显卡，已为你选用 %s 加速': 'GPU detected — using %s acceleration',
+    '没检测到可用的显卡加速，先用 CPU 跑（会慢一些）':
+        'No usable GPU acceleration — running on CPU (slower)',
+    '识别': 'Analysis',
+    '自动：按视频时长挑 2~8 帧，够用就别改。':
+        'Auto: 2-8 frames depending on clip length. Leave it alone unless you need to.',
+    '个（0 = 全部）': 'items (0 = all)',
+    '不勾选时，名字已经是「视/图 + 日期」格式的文件会跳过。':
+        'When unchecked, files already named "V/P + date" are skipped.',
+    '地名与定位': 'Place names & location',
+    '关着就是纯离线，一个网络包都不发。开启后会用在线地图接口，地址更准。':
+        'Off is fully offline — not a single packet leaves. On uses an online '
+        'map service for more accurate addresses.',
+    '国内坐标靠它查街道级地址，在 lbs.amap.com 免费申请；不填就一直用离线库。':
+        'Used for street-level addresses in mainland China; free key at lbs.amap.com. '
+        'Leave blank to stay on the offline database.',
+    '界面语言': 'Language',
+    '切换后需要重启软件生效。': 'Restart the app to apply.',
+    'Vulkan（推荐）': 'Vulkan (recommended)',
+    'NVIDIA / AMD / Intel 都能用，显存不够时可借用系统内存':
+        'Works on NVIDIA / AMD / Intel; borrows system memory when VRAM runs short',
+    'CUDA（实验）': 'CUDA (experimental)',
+    '仅 NVIDIA；显存不足时反而更慢，没有 tensor core 的老卡不建议':
+        'NVIDIA only; slower when VRAM is short — not advised on old cards '
+        'without tensor cores',
+    '装了才能用显卡；不装就用 CPU。显卡驱动要自己装好。':
+        'Install one to use the GPU; otherwise the CPU is used. '
+        'GPU drivers must be installed separately.',
+    '使用 CPU（不加速）': 'Use CPU (no acceleration)',
+    '启用': 'Enable',
+    '下载来源': 'Download source',
+    '主模型和配套 mmproj 要放在同一目录。没有模型时先在这里下载一个。':
+        'The main model and its mmproj must sit in the same folder. '
+        'If you have none yet, download one here.',
+    '模型库已切换': 'Models folder switched',
+    '网络': 'Network',
+    '正常': 'OK',
+    '异常': 'Error',
+    '开': 'On',
+    '关': 'Off',
+    '    联网精确定位当前：%s（开关默认关闭，关闭时一个网络包都不发）':
+        '    Online geocoding now: %s (off by default — no packets are sent while off)',
+    '模式': 'Mode',
+    '智能命名': 'Smart rename',
+    '秒改名': 'Quick rename',
+    '已为你选好': 'Picked for you',
+    '自定义': 'Custom',
+    '（没认出来，不改名）': "(couldn't read it — not renamed)",
+    '没认出画面': "couldn't read the picture",
+    '自检：照片模型失败 → ok=%s · 状态列=%s · 原因可查=%s':
+        'Self-check: photo analysis failure → ok=%s · status=%s · reason kept=%s',
+})
+
+# ---- P2/P3/P4：下载失败说人话、删掉重下、模型目录可写检查（自动追加）
+EN.update({
+    '这个位置不存在或不是一个文件夹：%s':
+        "That location doesn't exist or isn't a folder: %s",
+    '读不了这个位置：%s':
+        "Can't read that location: %s",
+    '这个文件夹不让写：%s':
+        "This folder isn't writable: %s",
+    '这个文件夹不让写（多半是系统目录或只读盘）：%s':
+        "This folder can't be written to (probably a system folder or a read-only drive): %s",
+    '这个盘现在不在：%s\n\nU 盘或移动硬盘是不是没插上？':
+        "That drive isn't connected right now: %s\n\nIs the USB stick or external drive plugged in?",
+    '这个位置不存在：%s':
+        "That location doesn't exist: %s",
+    '这里是个文件，不是文件夹：%s':
+        "That's a file, not a folder: %s",
+    '%s\n\n换一个能写的文件夹，比如自己新建的 D:\\模型。':
+        '%s\n\nPick a folder you can write to — for example a new folder you made on D:.',
+    '读不了这个文件（可能被别的程序占着）：%s':
+        "Can't read this file (another program may be holding it): %s",
+    '已有同名文件，但内容和官方的对不上：%s':
+        "A file with the same name is already there, but its contents don't match the official copy: %s",
+    '磁盘空间不够：%s 至少还要 %s，现在只剩 %s。\n\n腾点空间，或把模型库换到别的盘再试。':
+        'Not enough disk space: %s needs at least %s more, but only %s is left.\n\nFree up some space, or move the model library to another drive.',
+    '下载源说这个文件下不了（HTTP %d）：%s\n\n换个「下载来源」再试。':
+        "The download source says this file can't be fetched (HTTP %d): %s\n\nTry the other download source.",
+    '连不上下载服务器：%s\n\n多数是网络不通，或这个源在国内访问不了。把底部「下载来源」换成另一个再试。':
+        "Can't reach the download server: %s\n\nUsually the network is blocked, or this source is unreachable from where you are. Switch the download source at the bottom to the other one and try again.",
+    '下载被跳转到了不安全的地址，已停止。':
+        'The download was redirected to an insecure address, so it was stopped.',
+    '这个下载源返回的数据范围和预期对不上，已停止。\n\n把模型文件夹里的 %s.part 删掉，重新下一遍。':
+        "This source returned a byte range that doesn't match, so it was stopped.\n\nDelete %s.part in the model folder and download again.",
+    '下载源返回了意外状态（HTTP %d），可能文件还没传完或被限流，过一会儿再试。':
+        "The source returned an unexpected status (HTTP %d); the file may still be uploading or you're being rate-limited. Try again in a while.",
+    '下载到的数据比预期大，已停止。':
+        'The downloaded data is larger than expected, so it was stopped.',
+    '写文件失败（磁盘满了或没有权限）：%s':
+        "Couldn't write the file (disk full or no permission): %s",
+    '下载没有下完：%s 还差 %s。\n\n点「继续」会接着下。':
+        "The download didn't finish: %s is still %s short.\n\nPress Resume to continue.",
+    '%s 下完之后校验没通过（文件在传输中坏了），已删掉这一份，点「重试」重新下。':
+        '%s failed verification after downloading (it got corrupted in transit). That copy was deleted — press Retry to download it again.',
+    '下载源不认识：%s':
+        'Unknown download source: %s',
+    '域名解析失败，这台电脑上不了这个网址':
+        "Domain lookup failed — this computer can't reach that address",
+    '连接超时':
+        'Connection timed out',
+    '安全连接（HTTPS）没建立起来':
+        "Couldn't establish the secure (HTTPS) connection",
+    '对方拒绝连接':
+        'The server refused the connection',
+    '出了点意外：%s':
+        'Something unexpected happened: %s',
+    '删掉重下':
+        'Delete and re-download',
+    '要删掉这个文件吗？\n\n%s\n\n删掉之后点「下载」重新下一遍。':
+        'Delete this file?\n\n%s\n\nAfter deleting, press Download to get it again.',
+    '删不掉：%s\n\n可能还被别的程序占着，把它关掉再试。':
+        "Couldn't delete it: %s\n\nAnother program may be holding it — close that program and try again.",
+    '已删掉 %s，点「下载」重新下。':
+        'Deleted %s — press Download to get it again.',
 })
