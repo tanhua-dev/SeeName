@@ -19,6 +19,73 @@ PROJECTORS = ('mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf',
               'mmproj-Qwen3VL-4B-Instruct-F16.gguf')
 
 
+def _user_base() -> str:
+    """系统给本用户的软件数据根目录（模型、组件装不进口录时退回这里）。"""
+    if sys.platform == 'win32':
+        base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/AppData/Local')
+    elif sys.platform == 'darwin':
+        base = os.path.expanduser('~/Library/Application Support')
+    else:
+        base = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+        if not os.path.isabs(base):
+            base = os.path.expanduser('~/.local/share')
+    return base
+
+
+def _write_trouble(path: str) -> str:
+    """这个目录为什么写不进去；能写就返回空串。
+
+    老办法是「写一个 .write_probe 再删掉」。两个毛病：
+    一是删除被安全软件或受限环境拦下时，界面会连弹错误窗（一次重试 50 次），
+    而且拦下之后就判定成「不可写」，模型库白白退回用户目录；
+    二是拦下后那个 1 字节的探针文件会残留在模型库里。
+
+    现在改成向目录本身要一个「可写句柄」：不建文件、不删文件，判完就关。
+    Windows 上 Directory + GENERIC_WRITE 只有在真的能写时才会给你句柄；
+    其它系统用 os.access（posix 下它看的是真实权限位）。
+    """
+    try:
+        if not os.path.isdir(path):
+            return T('这个位置不存在或不是一个文件夹：%s') % path
+    except OSError:
+        return T('读不了这个位置：%s') % path
+    if os.name != 'nt':
+        return '' if os.access(path, os.W_OK) else T('这个文件夹不让写：%s') % path
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.CreateFileW.restype = ctypes.c_void_p
+        kernel32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32,
+                                         ctypes.c_uint32, ctypes.c_void_p,
+                                         ctypes.c_uint32, ctypes.c_uint32,
+                                         ctypes.c_void_p]
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        GENERIC_WRITE = 0x40000000
+        OPEN_EXISTING = 3
+        FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+        INVALID = ctypes.c_void_p(-1).value
+        handle = kernel32.CreateFileW(os.path.abspath(path), GENERIC_WRITE, 0x7,
+                                      None, OPEN_EXISTING,
+                                      FILE_FLAG_BACKUP_SEMANTICS, None)
+        if handle in (None, INVALID):
+            return T('这个文件夹不让写（多半是系统目录或只读盘）：%s') % path
+        kernel32.CloseHandle(handle)
+        return ''
+    except Exception:
+        # 判断本身出错时不拦着用户：真写不进去，下载时会报得更具体
+        return ''
+
+
+def _writable(path: str) -> bool:
+    """目录能不能真的写进去（只读的安装目录要能识别出来）。"""
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        return False
+    return not _write_trouble(path)
+
+
+
 @dataclass(frozen=True)
 class ModelFiles:
     name: str
@@ -60,15 +127,12 @@ class LocalModelStore:
         # Keep legacy Ollama models_dir separate: those blob files are not GGUF pairs.
         value = self.config().get('gguf_models_dir')
         if not value:
-            if sys.platform == 'win32':
-                base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/AppData/Local')
-            elif sys.platform == 'darwin':
-                base = os.path.expanduser('~/Library/Application Support')
-            else:
-                base = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
-                if not os.path.isabs(base):
-                    base = os.path.expanduser('~/.local/share')
-            value = os.path.join(base, 'SeeName', 'models')
+            # 解压即用：模型默认放在软件目录下的 models/，整个文件夹拷走就能用，
+            # 不往 C 盘用户目录里另存一份。软件目录写不进去（装在 Program Files、
+            # 或 mac 的 .app 里）才退回系统用户目录。
+            value = os.path.join(self.app_dir, 'models')
+            if not _writable(value):
+                value = os.path.join(_user_base(), 'SeeName', 'models')
         value = os.path.abspath(os.path.expanduser(str(value)))
         if create:
             os.makedirs(value, exist_ok=True)
@@ -86,9 +150,12 @@ class LocalModelStore:
         if name not in MODEL_NAMES:
             return [], T('不支持的模型：%s') % name
         roots = [Path(self.directory(create=False))]
-        # Preserve discovery of pre-download portable/source installations.
-        if not self.config().get('gguf_models_dir'):
-            roots.append(Path(self.app_dir) / 'models')
+        # 便携模式下 directory() 本身就是 <软件目录>/models，这两个可能重合；
+        # 只在真的不是同一个目录时才追加第二个搜索根，免得同一个文件被当成两份。
+        portable = Path(self.app_dir) / 'models'
+        if not self.config().get('gguf_models_dir') and portable.resolve() not in {
+                Path(r).resolve() for r in roots}:
+            roots.append(portable)
         directories = []
         for root in roots:
             try:
@@ -135,11 +202,32 @@ class LocalModelStore:
     def exists(self, name: str, installed: dict | None = None) -> bool:
         return name in (self.installed() if installed is None else installed)
 
+    def directory_problem(self, path: str) -> str:
+        """选目录时先问一遍：在不在、是不是文件夹、能不能写。
+
+        以前只 `isdir()`：指到「Program Files」这种只读目录能设置成功，
+        等下载到一半才炸 PermissionError；指到拔掉的 U 盘/移动硬盘，
+        直接把 WinError 3 的原文丢给用户。现在当场说清楚。
+        """
+        path = os.path.abspath(os.path.expanduser(str(path)))
+        drive, _ = os.path.splitdrive(path)
+        if drive and not os.path.exists(drive + os.sep):
+            return T('这个盘现在不在：%s\n\nU 盘或移动硬盘是不是没插上？') % (drive + os.sep)
+        if not os.path.exists(path):
+            return T('这个位置不存在：%s') % path
+        if not os.path.isdir(path):
+            return T('这里是个文件，不是文件夹：%s') % path
+        trouble = _write_trouble(path)
+        if trouble:
+            return T('%s\n\n换一个能写的文件夹，比如自己新建的 D:\\模型。') % trouble
+        return ''
+
     def set_directory(self, path: str, on_log=None) -> bool:
         path = os.path.abspath(os.path.expanduser(path))
-        if not os.path.isdir(path):
+        trouble = self.directory_problem(path)
+        if trouble:
             if on_log:
-                on_log(T('模型目录不存在或无法读取：%s') % path)
+                on_log(trouble)
             return False
         with self.lock:
             self.on_change()
@@ -155,8 +243,11 @@ class LocalModelStore:
             return download_pair(name, self.directory(), self.source(), on_progress, should_stop)
 
     def source(self) -> str:
-        source = self.config().get('gguf_download_source', 'huggingface')
-        return source if source in ('huggingface', 'modelscope') else 'huggingface'
+        # 默认走 ModelScope：国内家宽直连就能下，Hugging Face 在大陆多数网络下
+        # 连不上，而失败提示只是一串 urlopen 错误，小白根本不知道该去底部换源。
+        # 已经手动选过并下过一次的，config 里存着他自己的选择，不受影响。
+        source = self.config().get('gguf_download_source', 'modelscope')
+        return source if source in ('huggingface', 'modelscope') else 'modelscope'
 
     def set_source(self, url: str) -> str:
         if url not in ('huggingface', 'modelscope'):

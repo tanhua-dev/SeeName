@@ -140,13 +140,22 @@ model_store: ModelStore = LocalModelStore(
     save_config=lambda **kw: save_config(**kw))
 vulkan_component = VulkanComponent(lambda: config(), lambda **kw: save_config(**kw))
 cuda_component = CudaComponent(lambda: config(), lambda **kw: save_config(**kw))
-accelerator = AcceleratorSelector(lambda: config(), Vulkan=vulkan_component, CUDA=cuda_component)
+accelerator = AcceleratorSelector(lambda: config(), save_config=lambda **kw: save_config(**kw),
+                                  Vulkan=vulkan_component, CUDA=cuda_component)
 model_backend: InferenceBackend = LlamaBackend(model_store, context_size=CTX, accelerator=accelerator)
 
 
 def models_dir(create=True) -> str:
     """本地 GGUF 模型库目录，不复用旧 Ollama blob 目录配置。"""
     return model_store.directory(create=create)
+
+
+def auto_pick_accelerator() -> str:
+    """首次运行按已装组件挑一次加速后端；返回选中的名字（CPU 返回空串）。"""
+    try:
+        return accelerator.autopick()
+    except Exception:
+        return ''
 
 
 def runtime_status() -> dict:
@@ -169,6 +178,14 @@ atexit.register(shutdown_server)
 def set_models_dir(path, on_log=None) -> bool:
     """切换 GGUF 模型库目录并释放旧模型，不移动权重文件。"""
     return model_store.set_directory(path, on_log=on_log)
+
+
+def models_dir_problem(path) -> str:
+    """这个目录能不能当模型库；能就返回空串，不能就给一句人话原因。
+
+    界面在「选择模型目录」当场问一次，别等下载到一半才炸。
+    """
+    return model_store.directory_problem(path)
 
 
 def server_info() -> dict:

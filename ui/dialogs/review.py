@@ -11,6 +11,7 @@ import engine
 from strings import T
 from .. import theme
 from ..common import APP_TITLE, cut, open_path
+from ..controls import fit_window
 
 
 class PlanDialog(tk.Toplevel):
@@ -29,9 +30,12 @@ class PlanDialog(tk.Toplevel):
 
     PAGE_SIZES = (50, 100, 300)
 
-    def __init__(self, master, directory, items):
+    def __init__(self, master, directory, items, on_rollback=None):
         super().__init__(master)
         self.directory = directory
+        # 「回滚本目录改名」原来在 ⋯更多 菜单里：它只在这个目录改过名后才有意义，
+        # 和这张核对表天然是一件事，所以搬进这里的页脚。
+        self.on_rollback = on_rollback
         self.items = [dict(x) for x in items]
         # rows 是全部数据（dict，不是控件）；frame 只在当前页存在
         self.rows: list[dict] = []
@@ -41,8 +45,7 @@ class PlanDialog(tk.Toplevel):
         self.applied = None     # (done, failed, skipped)
         self.detail = None      # 改名明细：谁改成了什么、谁失败、谁被跳过
         self.title(T('核对并改名 · %s') % APP_TITLE)
-        self.geometry('1200x700')
-        self.minsize(900, 460)
+        fit_window(self, 1180, 700, min_w=900, min_h=460)
         self.configure(bg=theme.C_BG)
         self.transient(master)
         self.grab_set()
@@ -95,12 +98,26 @@ class PlanDialog(tk.Toplevel):
         foot.pack(fill='x', padx=14, pady=12)
         ttk.Button(foot, text=T('查找替换…'), style='Sec.TButton', width=theme.button_width(12, 18),
                    command=self.open_replace).pack(side='left')
-        tk.Label(foot, text=T('改名后想还原：主界面点「回滚本目录改名」。'),
+        if self.on_rollback is not None:
+            # 放左边、用次要样式：这是「撤回」动作，不能和主按钮抢位置。
+            # S-19：叫「撤销上次改名」——「回滚」是程序员的词，而且它撤的就是
+            # 这个目录最近一次改名（台账数据一条不少，只是把文件名换回去）。
+            ttk.Button(foot, text=T('撤销上次改名'), style='Sec.TButton',
+                       width=theme.button_width(12, 18),
+                       command=self._rollback).pack(side='left', padx=(10, 0))
+        tk.Label(foot, text=T('时间留空的行不会被改名，原文件保持不动。'),
                  bg=theme.C_BG, fg=theme.C_SUB, font=(theme.FONT, 9)).pack(side='left', padx=(12, 0))
         ttk.Button(foot, text=T('应用改名'), style='Go.TButton',
                    command=self.on_apply).pack(side='right')
         ttk.Button(foot, text=T('暂不改名，关闭'), style='Sec.TButton', width=theme.button_width(14, 18),
                    command=self.on_cancel).pack(side='right', padx=(0, 10))
+
+    def _rollback(self):
+        """先关窗再回滚：文件名会全部变回去，这张表随即作废。"""
+        if self.on_rollback is None:
+            return
+        self.on_cancel()
+        self.on_rollback()
 
     def open_replace(self):
         """散落在不相邻行里的同一个错名，用查找替换一次换掉。"""
@@ -302,6 +319,39 @@ class PlanDialog(tk.Toplevel):
         self._page_info(len(vis), n_page, lo)
         self._stat()
 
+    def focus_row(self, index):
+        """翻到某一行并滚到它跟前，顺手加个描边。
+
+        主界面点状态列的「点我补时间 / 点我看看」时走这里：用户点的是哪一行，
+        打开核对窗就该停在哪一行，而不是从第 1 页第 1 行开始自己找。
+        """
+        try:
+            vis = self._filtered()
+        except Exception:
+            return
+        pos = None
+        for i, row in enumerate(vis):
+            if row['it'].get('index') == index:
+                pos = i
+                break
+        if pos is None:
+            return
+        self.page = pos // max(1, self.page_size)
+        try:
+            self._render_page()
+            self.update_idletasks()
+            fr = vis[pos].get('frame')
+            if fr is None:
+                return
+            total = max(1, self.rows_box.winfo_height())
+            y = fr.winfo_y() / float(total)
+            self.canvas.yview_moveto(max(0.0, min(1.0, y - 0.1)))
+            fr.configure(highlightthickness=2,
+                         highlightbackground=theme.C_ACCENT,
+                         highlightcolor=theme.C_ACCENT)
+        except Exception:
+            pass
+
     def _build_pagebar(self):
         bar = tk.Frame(self, bg=theme.C_BG)
         bar.pack(fill='x', padx=14, pady=(6, 0))
@@ -346,6 +396,11 @@ class PlanDialog(tk.Toplevel):
         if self._suspend:
             return
         it, vs, v_new = row['it'], row['vs'], row['new']
+        # 没认出来的行：就算时间地名都齐、算得出名字，也不会被执行改名
+        # （apply_plan 跳过 ok=False）。预览里就别再显示一个不会落地的名字。
+        if not it.get('ok', True):
+            v_new.set(T('（没认出来，不改名）'))
+            return
         t = vs['time'].get().strip()
         dt = engine.parse_manual_time(t) if t else None
         nm = engine.name_from_item({
@@ -434,7 +489,7 @@ class PlanDialog(tk.Toplevel):
             return
         if not messagebox.askyesno(
                 APP_TITLE,
-                T('将按表格里的内容改名 %d 个文件（其余 %d 个时间空白或无需改动的保持原名）。' + '\n\n改名后可以在主界面点「回滚本目录改名」还原。\n确定继续？')
+                T('将按表格里的内容改名 %d 个文件（其余 %d 个时间空白或无需改动的保持原名）。' + '\n\n改完想还原：再打开这个窗口，点左下角「撤销上次改名」。\n确定继续？')
                 % (len(ready), len(out) - len(ready)), parent=self):
             return
         try:
@@ -504,8 +559,7 @@ class ReplaceDialog(tk.Toplevel):
         self.rows = rows
         self.n_done = 0
         self.title(T('查找替换 · %s') % APP_TITLE)
-        self.geometry('520x300')
-        self.minsize(460, 260)
+        fit_window(self, 520, 320, min_w=460, min_h=260)
         self.configure(bg=theme.C_BG)
         self.transient(master)
         self.grab_set()
@@ -644,8 +698,7 @@ class RenameResultDialog(tk.Toplevel):
         done, failed, skipped = (self.detail.get('counts')
                                  or (len(ok), len(bad), len(skip)))
         self.title(T('改名结果 · %s') % APP_TITLE)
-        self.geometry('760x480')
-        self.minsize(560, 340)
+        fit_window(self, 760, 480, min_w=560, min_h=340)
         self.configure(bg=theme.C_BG)
         self.transient(master)
         self.grab_set()

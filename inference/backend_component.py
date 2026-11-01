@@ -23,6 +23,7 @@ import uuid
 import zipfile
 
 from .downloads import DownloadCancelled
+from .local_models import _user_base, _writable
 
 BINDING_COMMIT = 'ce261d12b5810fb4c6e695efc85d5e8cf23f0630'
 LLAMA_COMMIT = '27c7a769da1671c97b2e3f6cb88704a6e1e0d0cd'
@@ -57,15 +58,14 @@ def runtime_directory():
 
 
 def default_root():
-    if sys.platform == 'win32':
-        base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/AppData/Local')
-    elif sys.platform == 'darwin':
-        base = os.path.expanduser('~/Library/Application Support')
-    else:
-        base = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
-        if not os.path.isabs(base):
-            base = os.path.expanduser('~/.local/share')
-    return Path(base) / 'SeeName' / 'backends'
+    # 解压即用：加速组件跟模型一样放在软件目录下的 backends/，整个文件夹拷走
+    # 就还能用；软件目录写不进去（装在 Program Files、或 mac 的 .app 里）才退回
+    # 系统用户目录。
+    from core.paths import APP_DIR
+    portable = Path(APP_DIR) / 'backends'
+    if _writable(portable):
+        return portable
+    return Path(_user_base()) / 'SeeName' / 'backends'
 
 
 class NativeBackendComponent:
